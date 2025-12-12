@@ -36,8 +36,6 @@ dependencies:
   latlong2: any
   excel: any
   file_picker: any
-  bitsdojo_window: any
-  window_manager: any
   intl: any
 
   # The following adds the Cupertino Icons font to your application.

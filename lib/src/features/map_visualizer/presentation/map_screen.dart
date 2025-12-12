@@ -1,6 +1,8 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_map/flutter_map.dart'; // Importar flutter_map
+import 'package:latlong2/latlong.dart'; // Importar latlong2
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/data_display_dialog.dart';
 
@@ -118,11 +120,18 @@ class MapScreen extends ConsumerWidget {
                     ),
                     // Map Area
                     Expanded(
-                      child: Container(
-                        color: Colors.blueGrey[100],
-                        child: const Center(
-                          child: Text('Mapa (flutter_map)'),
+                      child: FlutterMap(
+                        options: const MapOptions(
+                          initialCenter: LatLng(40.416775, -3.703790), // Madrid, España
+                          initialZoom: 5.0,
                         ),
+                        children: [
+                          TileLayer(
+                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            userAgentPackageName: 'com.example.siop_data_visualizer', // Reemplaza con tu package name
+                          ),
+                          // Aquí irían los marcadores o polilíneas más adelante.
+                        ],
                       ),
                     ),
                   ],
