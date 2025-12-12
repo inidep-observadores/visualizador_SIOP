@@ -1,6 +1,7 @@
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/data/services/excel_parser.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/map_screen.dart';
 
 // AGENT NOTE: According to AGENTS.md, the following C++ code must be added
@@ -10,7 +11,14 @@ import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/ma
 auto bdw = bitsdojo_window_configure(BDW_CUSTOM_FRAME | BDW_HIDE_ON_STARTUP);
 */
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Run the excel parser test
+  print("--- Running Excel Parser Test ---");
+  final excelParser = ExcelParser();
+  await excelParser.parseDemoData();
+  print("--- Excel Parser Test Finished ---");
+
   runApp(const ProviderScope(child: MyApp()));
 
   // Add this code below runApp()
