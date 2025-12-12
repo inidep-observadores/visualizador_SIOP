@@ -1,4 +1,3 @@
-import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/map_screen.dart';
@@ -12,15 +11,6 @@ auto bdw = bitsdojo_window_configure(BDW_CUSTOM_FRAME | BDW_HIDE_ON_STARTUP);
 
 void main() {
   runApp(const ProviderScope(child: MyApp()));
-
-  // Add this code below runApp()
-  doWhenWindowReady(() {
-    const initialSize = Size(1280, 720);
-    appWindow.minSize = const Size(800, 600);
-    appWindow.size = initialSize;
-    appWindow.alignment = Alignment.center;
-    appWindow.show();
-  });
 }
 
 class MyApp extends StatelessWidget {
@@ -30,17 +20,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Vessel Track Visualizer',
+      title: 'Visualizador de datos de buques desde SIOP',
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
       ),
       home: Scaffold(
-        body: WindowBorder(
-          color: Colors.grey.shade300,
-          width: 1,
-          child: const MapScreen(),
-        ),
+        body: const MapScreen(),
       ),
     );
   }

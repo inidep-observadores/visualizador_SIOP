@@ -2,7 +2,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/custom_title_bar.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/data_display_dialog.dart';
 
 class MapScreen extends ConsumerWidget {
@@ -61,7 +60,6 @@ class MapScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        const CustomTitleBar(),
         Expanded(
           child: Column(
             children: [
