@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,13 +8,20 @@ import 'package:latlong2/latlong.dart'; // Importar latlong2
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/data_display_dialog.dart';
 
-class MapScreen extends ConsumerWidget {
+class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
+  @override
+  ConsumerState<MapScreen> createState() => _MapScreenState();
+}
+
+class _MapScreenState extends ConsumerState<MapScreen> {
+  final MapController _mapController = MapController();
+  LatLngBounds? _lastFittedBounds;
+
   /// Opens the file picker and triggers the data loading process via the provider.
-  Future<void> _pickFile(WidgetRef ref) async {
-    // Capture scaffold messenger before async gap for safety.
-    final scaffoldMessenger = ScaffoldMessenger.of(ref.context);
+  Future<void> _pickFile() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -21,7 +30,6 @@ class MapScreen extends ConsumerWidget {
 
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
-        // Let the provider handle the loading logic
         ref.read(excelDataProvider.notifier).loadFromFile(path);
       }
     } catch (e) {
@@ -33,7 +41,7 @@ class MapScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final excelDataState = ref.watch(excelDataProvider);
 
     // Listen to the provider state to show SnackBars for success or error.
@@ -61,6 +69,9 @@ class MapScreen extends ConsumerWidget {
     final isLoading = excelDataState.isLoading;
     final trackPoints = excelData != null ? _extractTrackPoints(excelData) : <LatLng>[];
     final mapCenter = trackPoints.isNotEmpty ? trackPoints[trackPoints.length ~/ 2] : const LatLng(40.416775, -3.703790);
+    final trackBounds = trackPoints.length > 1 ? LatLngBounds.fromPoints(trackPoints) : null;
+    final fallbackZoom = trackPoints.isNotEmpty ? 6.0 : 5.0;
+    _scheduleViewAdjustment(trackBounds, mapCenter, fallbackZoom);
     final positionMarkers = trackPoints
         .map(
           (point) => Marker(
@@ -96,7 +107,7 @@ class MapScreen extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             ElevatedButton.icon(
-                              onPressed: isLoading ? null : () => _pickFile(ref),
+                              onPressed: isLoading ? null : _pickFile,
                               icon: isLoading
                                   ? Container(
                                       width: 24,
@@ -138,6 +149,7 @@ class MapScreen extends ConsumerWidget {
                     // Map Area
                     Expanded(
                       child: FlutterMap(
+                        mapController: _mapController,
                         options: MapOptions(
                           initialCenter: mapCenter,
                           initialZoom: trackPoints.isNotEmpty ? 6.0 : 5.0,
@@ -200,6 +212,44 @@ class MapScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  void _scheduleViewAdjustment(LatLngBounds? bounds, LatLng fallbackCenter, double fallbackZoom) {
+    if (_boundsMatch(_lastFittedBounds, bounds)) return;
+    final targetCenter = bounds != null ? _centerForBounds(bounds) : fallbackCenter;
+    final targetZoom = bounds != null ? _zoomForBounds(bounds) : fallbackZoom;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _mapController.move(targetCenter, targetZoom);
+    });
+    _lastFittedBounds = bounds;
+  }
+
+  static LatLng _centerForBounds(LatLngBounds bounds) {
+    final latCenter = (bounds.southWest.latitude + bounds.northEast.latitude) / 2;
+    final lngCenter = (bounds.southWest.longitude + bounds.northEast.longitude) / 2;
+    return LatLng(latCenter, lngCenter);
+  }
+
+  static double _zoomForBounds(LatLngBounds bounds) {
+    final latDiff = (bounds.northEast.latitude - bounds.southWest.latitude).abs();
+    final lngDiff = (bounds.northEast.longitude - bounds.southWest.longitude).abs();
+    final maxDiff = math.max(latDiff, lngDiff);
+    if (maxDiff < 0.005) return 15.0;
+    if (maxDiff < 0.02) return 13.5;
+    if (maxDiff < 0.1) return 11.0;
+    if (maxDiff < 0.5) return 9.0;
+    if (maxDiff < 2.0) return 7.0;
+    if (maxDiff < 5.0) return 5.5;
+    return 4.5;
+  }
+
+  static bool _boundsMatch(LatLngBounds? previous, LatLngBounds? current) {
+    if (previous == null || current == null) return previous == current;
+    return previous.southWest.latitude == current.southWest.latitude &&
+        previous.southWest.longitude == current.southWest.longitude &&
+        previous.northEast.latitude == current.northEast.latitude &&
+        previous.northEast.longitude == current.northEast.longitude;
   }
 }
 
