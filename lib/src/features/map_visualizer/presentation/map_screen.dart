@@ -1,11 +1,64 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/custom_title_bar.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/data_display_dialog.dart';
 
-class MapScreen extends StatelessWidget {
+class MapScreen extends ConsumerWidget {
   const MapScreen({super.key});
 
+  /// Opens the file picker and triggers the data loading process via the provider.
+  Future<void> _pickFile(WidgetRef ref) async {
+    // Capture scaffold messenger before async gap for safety.
+    final scaffoldMessenger = ScaffoldMessenger.of(ref.context);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['xls', 'xlsx'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final path = result.files.single.path!;
+        // Let the provider handle the loading logic
+        ref.read(excelDataProvider.notifier).loadFromFile(path);
+      }
+    } catch (e) {
+      // Show a generic error for file picking issues
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Error al seleccionar el archivo: $e')),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final excelDataState = ref.watch(excelDataProvider);
+
+    // Listen to the provider state to show SnackBars for success or error.
+    ref.listen<AsyncValue<List<Map<String, dynamic>>?>>(excelDataProvider, (_, next) {
+      next.when(
+        data: (data) {
+          if (data != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('${data.length} filas cargadas con éxito.')),
+            );
+          }
+        },
+        error: (error, stackTrace) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al procesar el archivo: $error')),
+          );
+        },
+        loading: () {
+          // No action needed here, the UI below handles the loading indicator.
+        },
+      );
+    });
+
+    final excelData = excelDataState.asData?.value;
+    final isLoading = excelDataState.isLoading;
+
     return Column(
       children: [
         const CustomTitleBar(),
@@ -26,11 +79,29 @@ class MapScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             ElevatedButton.icon(
-                              onPressed: () {
-                                // TODO: Implement file picking
-                              },
-                              icon: const Icon(Icons.file_upload),
+                              onPressed: isLoading ? null : () => _pickFile(ref),
+                              icon: isLoading
+                                  ? Container(
+                                      width: 24,
+                                      height: 24,
+                                      padding: const EdgeInsets.all(2.0),
+                                      child: const CircularProgressIndicator(strokeWidth: 3, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.file_upload),
                               label: const Text('Cargar Excel'),
+                            ),
+                            const SizedBox(height: 8),
+                            OutlinedButton.icon(
+                              onPressed: excelData == null || excelData.isEmpty
+                                  ? null
+                                  : () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (_) => DataDisplayDialog(data: excelData),
+                                      );
+                                    },
+                              icon: const Icon(Icons.table_rows),
+                              label: const Text('Ver Datos'),
                             ),
                             const SizedBox(height: 20),
                             Text('Información del Buque', style: Theme.of(context).textTheme.titleMedium),
@@ -40,7 +111,7 @@ class MapScreen extends StatelessWidget {
                             const SizedBox(height: 20),
                             Text('Estadísticas', style: Theme.of(context).textTheme.titleMedium),
                             const Divider(),
-                            const Text('Total de puntos: 0'),
+                            Text('Total de puntos: ${excelData?.length ?? 0}'),
                             const Text('Desde: N/A'),
                             const Text('Hasta: N/A'),
                           ],
