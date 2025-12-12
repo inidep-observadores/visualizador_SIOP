@@ -164,7 +164,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               polylines: [
                                 Polyline(
                                   points: trackPoints,
-                                  color: Colors.blueAccent.withValues(alpha: 0.6),
+                                  color: Colors.green.withOpacity(0.7),
                                   strokeWidth: 2.5,
                                 ),
                               ],
