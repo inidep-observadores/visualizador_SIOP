@@ -59,6 +59,23 @@ class MapScreen extends ConsumerWidget {
 
     final excelData = excelDataState.asData?.value;
     final isLoading = excelDataState.isLoading;
+    final trackPoints = excelData != null ? _extractTrackPoints(excelData) : <LatLng>[];
+    final mapCenter = trackPoints.isNotEmpty ? trackPoints[trackPoints.length ~/ 2] : const LatLng(40.416775, -3.703790);
+    final positionMarkers = trackPoints
+        .map(
+          (point) => Marker(
+            width: 8,
+            height: 8,
+            point: point,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.blueAccent,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        )
+        .toList();
 
     return Column(
       children: [
@@ -121,16 +138,28 @@ class MapScreen extends ConsumerWidget {
                     // Map Area
                     Expanded(
                       child: FlutterMap(
-                        options: const MapOptions(
-                          initialCenter: LatLng(40.416775, -3.703790), // Madrid, España
-                          initialZoom: 5.0,
+                        options: MapOptions(
+                          initialCenter: mapCenter,
+                          initialZoom: trackPoints.isNotEmpty ? 6.0 : 5.0,
                         ),
                         children: [
                           TileLayer(
                             urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.example.siop_data_visualizer', // Reemplaza con tu package name
                           ),
-                          // Aquí irían los marcadores o polilíneas más adelante.
+                          if (trackPoints.length > 1)
+                            PolylineLayer(
+                              polylines: [
+                                Polyline(
+                                  points: trackPoints,
+                                  color: Colors.blueAccent.withValues(alpha: 0.6),
+                                  strokeWidth: 2.5,
+                                ),
+                              ],
+                            ),
+                          MarkerLayer(
+                            markers: positionMarkers,
+                          ),
                         ],
                       ),
                     ),
@@ -172,4 +201,56 @@ class MapScreen extends ConsumerWidget {
       ],
     );
   }
+}
+
+List<LatLng> _extractTrackPoints(List<Map<String, dynamic>> rows) {
+  final points = <LatLng>[];
+  for (final row in rows) {
+    final latLng = _latLngFromRow(row);
+    if (latLng != null) {
+      points.add(latLng);
+    }
+  }
+  return points;
+}
+
+LatLng? _latLngFromRow(Map<String, dynamic> row) {
+  final latitude = _coordinateFromRow(row, 'latitud');
+  final longitude = _coordinateFromRow(row, 'longitud');
+  if (latitude == null || longitude == null) {
+    return null;
+  }
+  return LatLng(latitude, longitude);
+}
+
+double? _coordinateFromRow(Map<String, dynamic> row, String columnName) {
+  final normalizedTarget = columnName.trim().toLowerCase();
+  final matchedKey = row.keys.firstWhere(
+    (key) => key.trim().toLowerCase() == normalizedTarget,
+    orElse: () => '',
+  );
+
+  if (matchedKey.isEmpty) {
+    return null;
+  }
+
+  final rawValue = row[matchedKey];
+  return _parseDouble(rawValue);
+}
+
+double? _parseDouble(Object? value) {
+  if (value == null) {
+    return null;
+  }
+
+  if (value is num) {
+    return value.toDouble();
+  }
+
+  final text = value.toString().trim().replaceAll(',', '.');
+  if (text.isEmpty) {
+    return null;
+  }
+
+  return double.tryParse(text);
 }
