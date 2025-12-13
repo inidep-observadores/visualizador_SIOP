@@ -217,10 +217,23 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             width: 8,
             height: 8,
             point: point.position,
-            child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.blueAccent,
-                shape: BoxShape.circle,
+            child: Tooltip(
+              message:
+                  'Fecha: ${point.timestamp != null ? _formatDate(point.timestamp!) : "N/A"}\n'
+                  'Hora: ${point.timestamp != null ? _formatTime(point.timestamp!) : "N/A"}\n'
+                  'Lat: ${_formatCoordinate(point.position.latitude, true)}\n'
+                  'Lon: ${_formatCoordinate(point.position.longitude, false)}\n'
+                  'Vel: ${point.speed?.toStringAsFixed(1) ?? "0.0"} kn\n'
+                  'Rumbo: ${point.course?.toStringAsFixed(0) ?? "0"}º',
+              waitDuration: Duration.zero,
+              padding: const EdgeInsets.all(8.0),
+              showDuration: Duration
+                  .zero, // Hide immediately on exit if needed, though standard behavior is usually fine.
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: Colors.blueAccent,
+                  shape: BoxShape.circle,
+                ),
               ),
             ),
           ),
@@ -347,7 +360,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                 ),
                               ],
                             ),
-                          MarkerLayer(markers: positionMarkers),
+                          MarkerLayer(
+                            markers: [
+                              if (currentPoint != null)
+                                Marker(
+                                  width: 20,
+                                  height: 20,
+                                  point: currentPoint.position,
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.redAccent,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Icon(
+                                      Icons.circle,
+                                      color: Colors.white,
+                                      size: 10,
+                                    ),
+                                  ),
+                                ),
+                              ...positionMarkers,
+                            ],
+                          ),
                         ],
                       ),
                     ),
