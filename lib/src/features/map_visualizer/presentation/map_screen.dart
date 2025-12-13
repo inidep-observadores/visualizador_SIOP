@@ -1320,16 +1320,36 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                                 ],
                                               ),
                                               const SizedBox(height: 4),
-                                              Text(
-                                                'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
+                                              InkWell(
+                                                onTap: () {
+                                                  _updateSliderAndMarker(
+                                                    trip
+                                                        .startTime
+                                                        .millisecondsSinceEpoch
+                                                        .toDouble(),
+                                                  );
+                                                },
+                                                child: Text(
+                                                  'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                  ),
                                                 ),
                                               ),
-                                              Text(
-                                                'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
+                                              InkWell(
+                                                onTap: () {
+                                                  _updateSliderAndMarker(
+                                                    trip
+                                                        .endTime
+                                                        .millisecondsSinceEpoch
+                                                        .toDouble(),
+                                                  );
+                                                },
+                                                child: Text(
+                                                  'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                  ),
                                                 ),
                                               ),
                                             ],
@@ -1548,6 +1568,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (maxDiff < 2.0) return 7.0;
     if (maxDiff < 5.0) return 5.5;
     return 4.5;
+  }
+
+  void _updateSliderAndMarker(double timestamp) {
+    setState(() {
+      _currentSliderValue = timestamp;
+      _filterPoints();
+    });
+    // Find closest point to timestamp to update marker
+    if (_filteredPoints.isNotEmpty) {
+      final closest = _filteredPoints.reduce((a, b) {
+        return (a.timestamp!.millisecondsSinceEpoch - timestamp).abs() <
+                (b.timestamp!.millisecondsSinceEpoch - timestamp).abs()
+            ? a
+            : b;
+      });
+      _updateMarkerTarget(closest.position, animate: true);
+    }
   }
 
   bool _boundsMatch(LatLngBounds? previous, LatLngBounds? current) {
