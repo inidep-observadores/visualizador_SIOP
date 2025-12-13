@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
@@ -182,18 +183,22 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('${data.length} filas cargadas con éxito.'),
+                behavior: SnackBarBehavior.floating,
+                width: 400,
               ),
             );
           }
         },
         error: (error, stackTrace) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error al procesar el archivo: $error')),
+            SnackBar(
+              content: Text('Error al procesar el archivo: $error'),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
           );
         },
-        loading: () {
-          // No action needed here
-        },
+        loading: () {},
       );
     });
 
@@ -209,7 +214,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isLoading = excelDataState.isLoading;
     final mapCenter = _filteredPoints.isNotEmpty
         ? _filteredPoints[_filteredPoints.length ~/ 2].position
-        : const LatLng(-38.0055, -57.5426); // Mar del Plata
+        : const LatLng(-38.0055, -57.5426);
 
     final positionMarkers = _filteredPoints
         .map(
@@ -221,12 +226,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               message: _getTooltipMessage(point),
               waitDuration: Duration.zero,
               padding: const EdgeInsets.all(8.0),
-              showDuration: Duration
-                  .zero, // Hide immediately on exit if needed, though standard behavior is usually fine.
+              showDuration: Duration.zero,
+              decoration: BoxDecoration(
+                color: Colors.black87,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              textStyle: const TextStyle(color: Colors.white, fontSize: 12),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.blueAccent.withValues(alpha: 0.7),
+                  color: Colors.blueAccent.withOpacity(0.6),
                   shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 1),
                 ),
               ),
             ),
@@ -234,7 +244,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         )
         .toList();
 
-    // Determine current ship info
     final currentPoint = _selectedPoint;
     final shipName =
         currentPoint?.shipName ??
@@ -245,314 +254,569 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         (_allPoints.isNotEmpty ? _allPoints.first.matricula : 'N/A') ??
         'N/A';
 
-    return Column(
-      children: [
-        Expanded(
-          child: Column(
-            children: [
-              // Main content area
-              Expanded(
-                child: Row(
-                  children: [
-                    // Sidebar
-                    Container(
-                      width: 250,
-                      color: Colors.grey[200],
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: isLoading ? null : _pickFile,
-                              icon: isLoading
-                                  ? Container(
-                                      width: 24,
-                                      height: 24,
-                                      padding: const EdgeInsets.all(2.0),
-                                      child: const CircularProgressIndicator(
-                                        strokeWidth: 3,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.file_upload),
-                              label: const Text('Cargar Excel'),
+    return Scaffold(
+      body: Stack(
+        children: [
+          // 1. Layer del Mapa (Fondo completo)
+          Positioned.fill(
+            child: FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: mapCenter,
+                initialZoom: _filteredPoints.isNotEmpty ? 6.0 : 5.0,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.siop_data_visualizer',
+                ),
+                if (_filteredPoints.length > 1)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _filteredPoints.map((p) => p.position).toList(),
+                        color: Colors.teal.withOpacity(0.8),
+                        strokeWidth: 3.0,
+                      ),
+                    ],
+                  ),
+                MarkerLayer(
+                  markers: [
+                    ...positionMarkers,
+                    if (currentPoint != null)
+                      Marker(
+                        width: 40,
+                        height: 40,
+                        point: currentPoint.position,
+                        child: Tooltip(
+                          message: _getTooltipMessage(currentPoint),
+                          waitDuration: Duration.zero,
+                          padding: const EdgeInsets.all(8.0),
+                          showDuration: Duration.zero,
+                          decoration: BoxDecoration(
+                            color: Colors.black87,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: AnimatedRotation(
+                            turns: (currentPoint.course ?? 0) / 360,
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOut,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black26,
+                                    blurRadius: 8,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(
+                                Icons.navigation,
+                                color: Colors.indigoAccent,
+                                size: 28,
+                              ),
                             ),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Información del Buque',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const Divider(),
-                            Text('Nombre: $shipName'),
-                            Text('Matrícula: $matricula'),
-                            const SizedBox(height: 20),
-                            Text(
-                              'Información de Posicionamiento',
-                              style: Theme.of(context).textTheme.titleMedium,
-                            ),
-                            const Divider(),
-                            // Show positioning info for the selected time
-                            if (currentPoint != null &&
-                                currentPoint.timestamp != null) ...[
-                              Text(
-                                'Fecha: ${_formatDate(currentPoint.timestamp!)}',
-                              ),
-                              Text(
-                                'Hora: ${_formatTime(currentPoint.timestamp!)}',
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Latitud: ${_formatCoordinate(currentPoint.position.latitude, true)}',
-                              ),
-                              Text(
-                                'Longitud: ${_formatCoordinate(currentPoint.position.longitude, false)}',
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                'Velocidad: ${currentPoint.speed?.toStringAsFixed(1) ?? "0.0"} kn',
-                              ),
-                              Text(
-                                'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "0"}º',
-                              ),
-                            ] else ...[
-                              const Text('Seleccione un punto en el tiempo'),
-                            ],
-
-                            const Spacer(),
-                            const Divider(),
-                            Text('Total de puntos: ${_allPoints.length}'),
-                            Text('Visibles: ${_filteredPoints.length}'),
-                          ],
+                          ),
                         ),
                       ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Tarjeta Flotante de Información (Top Left)
+          Positioned(
+            top: 24,
+            left: 24,
+            child: SizedBox(
+              width: 220, // Reduced width
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                  child: Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    // Map Area
-                    Expanded(
-                      child: FlutterMap(
-                        mapController: _mapController,
-                        options: MapOptions(
-                          initialCenter: mapCenter,
-                          initialZoom: _filteredPoints.isNotEmpty ? 6.0 : 5.0,
-                        ),
+                    color: Colors.white.withValues(alpha: 0.5),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          TileLayer(
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName:
-                                'com.example.siop_data_visualizer',
+                          // Header con carga de archivo
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Buque',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.grey[700],
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      shipName == 'N/A'
+                                          ? 'Sin datos'
+                                          : shipName.toUpperCase(),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.black87,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    Text(
+                                      matricula == 'N/A'
+                                          ? ''
+                                          : trimMatricula(matricula),
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.grey[800],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              FloatingActionButton.small(
+                                onPressed: isLoading ? null : _pickFile,
+                                elevation: 0,
+                                backgroundColor: Colors.white.withOpacity(0.5),
+                                foregroundColor: Colors.indigoAccent,
+                                child: isLoading
+                                    ? const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.upload_file_outlined,
+                                        size: 18,
+                                      ),
+                              ),
+                            ],
                           ),
-                          if (_filteredPoints.length > 1)
-                            PolylineLayer(
-                              polylines: [
-                                Polyline(
-                                  points: _filteredPoints
-                                      .map((p) => p.position)
-                                      .toList(),
-                                  color: Colors.green.withOpacity(0.7),
-                                  strokeWidth: 2.5,
+                          const SizedBox(height: 12),
+                          const Divider(height: 1),
+                          const SizedBox(height: 12),
+
+                          Text(
+                            'POSICIÓN ACTUAL',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.grey[700],
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          if (currentPoint != null &&
+                              currentPoint.timestamp != null) ...[
+                            // 1. Latitud
+                            _buildDataBox(
+                              'LATITUD',
+                              _formatCoordinate(
+                                currentPoint.position.latitude,
+                                true,
+                              ),
+                              Colors.blue.shade50.withOpacity(0.4),
+                              Colors.blue.shade900,
+                            ),
+                            const SizedBox(height: 8),
+
+                            // 2. Longitud
+                            _buildDataBox(
+                              'LONGITUD',
+                              _formatCoordinate(
+                                currentPoint.position.longitude,
+                                false,
+                              ),
+                              Colors.blue.shade50.withOpacity(0.4),
+                              Colors.blue.shade900,
+                            ),
+                            const SizedBox(height: 12),
+
+                            // 3. Fecha
+                            _buildInfoRow(
+                              Icons.calendar_today_outlined,
+                              'Fecha',
+                              _formatDate(currentPoint.timestamp!),
+                            ),
+                            // 4. Hora
+                            _buildInfoRow(
+                              Icons.access_time_outlined,
+                              'Hora local',
+                              _formatTime(currentPoint.timestamp!),
+                            ),
+
+                            const SizedBox(height: 8),
+                            const Divider(height: 1),
+                            const SizedBox(height: 8),
+
+                            // Speed/Course Compact at bottom
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Vel: ${currentPoint.speed?.toStringAsFixed(1) ?? "-"} kn',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[700],
+                                  ),
+                                ),
+                                Text(
+                                  'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "-"}º',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[700],
+                                  ),
                                 ),
                               ],
                             ),
-                          MarkerLayer(
-                            markers: [
-                              ...positionMarkers,
-                              if (currentPoint != null)
-                                Marker(
-                                  width: 30, // Increased size for visibility
-                                  height: 30,
-                                  point: currentPoint.position,
-                                  child: Tooltip(
-                                    message: _getTooltipMessage(currentPoint),
-                                    waitDuration: Duration.zero,
-                                    padding: const EdgeInsets.all(8.0),
-                                    showDuration: Duration.zero,
-                                    child: AnimatedRotation(
-                                      turns: (currentPoint.course ?? 0) / 360,
-                                      duration: const Duration(
-                                        milliseconds: 250,
-                                      ),
-                                      curve: Curves.easeInOut,
-                                      child: const Icon(
-                                        Icons.navigation,
-                                        color: Colors.redAccent,
-                                        size: 24,
-                                        shadows: [
-                                          Shadow(
-                                            blurRadius: 4,
-                                            color: Colors.black54,
-                                            offset: Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
+                          ] else ...[
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50]!.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.grey[300]!),
+                              ),
+                              child: const Text(
+                                'Seleccione un punto',
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 12,
+                                  fontStyle: FontStyle.italic,
                                 ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${_filteredPoints.length} pts',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
                             ],
                           ),
                         ],
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-              // Bottom Timeline Panel
-              Container(
-                height: 150,
-                color: Colors.grey[300],
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16.0,
-                    vertical: 8.0,
-                  ),
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      rangeValueIndicatorShape:
-                          const PaddleRangeSliderValueIndicatorShape(),
-                      showValueIndicator: ShowValueIndicator.always,
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Sub-range Slider with Tooltip
-                        if (_currentRangeValues != null)
-                          Slider(
-                            value:
-                                _currentSliderValue ??
-                                _currentRangeValues!.start,
-                            min: _currentRangeValues!.start,
-                            max: _currentRangeValues!.end,
-                            divisions:
-                                (_currentRangeValues != null &&
-                                    (_currentRangeValues!.end -
-                                            _currentRangeValues!.start) >
-                                        0)
-                                ? math.max(
-                                    1,
-                                    ((_currentRangeValues!.end -
-                                                _currentRangeValues!.start) /
-                                            60000)
-                                        .round(),
-                                  )
-                                : null,
-                            label: _currentSliderValue != null
-                                ? _formatDateTime(
-                                    DateTime.fromMillisecondsSinceEpoch(
-                                      _currentSliderValue!.toInt(),
-                                    ),
-                                  )
-                                : null,
-                            onChanged: (value) {
-                              setState(() {
-                                _currentSliderValue = value;
-                              });
-                              final selected = _selectedPoint;
-                              if (selected != null) {
-                                _ensureVisible(selected.position);
-                              }
-                            },
-                          ),
+            ),
+          ),
 
-                        // Min/Max and RangeSlider
-                        Row(
+          // 3. Tarjeta Flotante de Timeline (Bottom Center)
+          Positioned(
+            left: 24,
+            right: 24,
+            bottom: 24,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                    child: Card(
+                      elevation: 3,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      color: Colors.white.withValues(alpha: 0.5),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24.0,
+                          vertical: 16.0,
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Min Limit Date
-                            Text(
-                              _minDate != null
-                                  ? _formatDateTime(_minDate!)
-                                  : '--:--',
-                              style: const TextStyle(fontSize: 12),
+                            // Main Slider
+                            Row(
+                              children: [
+                                IconButton(
+                                  onPressed: () {
+                                    // TODO: Implement play/pause
+                                  },
+                                  icon: const Icon(Icons.play_circle_fill),
+                                  color: Colors.indigoAccent,
+                                  iconSize: 32,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: _currentRangeValues != null
+                                      ? SliderTheme(
+                                          data: SliderTheme.of(context)
+                                              .copyWith(
+                                                activeTrackColor:
+                                                    Colors.indigoAccent,
+                                                thumbColor: Colors.indigo,
+                                                overlayColor: Colors.indigo
+                                                    .withOpacity(0.2),
+                                                trackHeight: 4,
+                                                thumbShape:
+                                                    const RoundSliderThumbShape(
+                                                      enabledThumbRadius: 8,
+                                                    ),
+                                              ),
+                                          child: Slider(
+                                            value:
+                                                _currentSliderValue ??
+                                                _currentRangeValues!.start,
+                                            min: _currentRangeValues!.start,
+                                            max: _currentRangeValues!.end,
+                                            divisions:
+                                                (_currentRangeValues!.end -
+                                                        _currentRangeValues!
+                                                            .start) >
+                                                    0
+                                                ? math.max(
+                                                    1,
+                                                    ((_currentRangeValues!.end -
+                                                                _currentRangeValues!
+                                                                    .start) /
+                                                            60000)
+                                                        .round(),
+                                                  )
+                                                : null,
+                                            label: _currentSliderValue != null
+                                                ? _formatDateTime(
+                                                    DateTime.fromMillisecondsSinceEpoch(
+                                                      _currentSliderValue!
+                                                          .toInt(),
+                                                    ),
+                                                  )
+                                                : null,
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _currentSliderValue = value;
+                                              });
+                                              final selected = _selectedPoint;
+                                              if (selected != null) {
+                                                _ensureVisible(
+                                                  selected.position,
+                                                );
+                                              }
+                                            },
+                                          ),
+                                        )
+                                      : const LinearProgressIndicator(value: 0),
+                                ),
+                              ],
                             ),
-                            const SizedBox(width: 8),
-                            // Range Slider
-                            Expanded(
-                              child: RangeSlider(
-                                values:
-                                    _currentRangeValues ??
-                                    const RangeValues(0, 1),
-                                min:
-                                    _minDate?.millisecondsSinceEpoch
-                                        .toDouble() ??
-                                    0,
-                                max:
-                                    _maxDate?.millisecondsSinceEpoch
-                                        .toDouble() ??
-                                    1,
-                                divisions: _minDate != null && _maxDate != null
-                                    ? (_maxDate!
-                                                  .difference(_minDate!)
-                                                  .inMinutes >
-                                              0
-                                          ? _maxDate!
-                                                .difference(_minDate!)
-                                                .inMinutes
-                                          : null)
-                                    : null,
-                                labels: _currentRangeValues != null
-                                    ? RangeLabels(
-                                        _formatDateTime(
-                                          DateTime.fromMillisecondsSinceEpoch(
-                                            _currentRangeValues!.start.toInt(),
-                                          ),
-                                        ),
-                                        _formatDateTime(
-                                          DateTime.fromMillisecondsSinceEpoch(
-                                            _currentRangeValues!.end.toInt(),
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                                onChanged:
-                                    (_minDate != null &&
-                                        _maxDate != null &&
-                                        _minDate != _maxDate)
-                                    ? (RangeValues values) {
-                                        setState(() {
-                                          _currentRangeValues = values;
-                                          // Update single slider if out of bounds
-                                          if (_currentSliderValue != null) {
-                                            if (_currentSliderValue! <
-                                                values.start) {
-                                              _currentSliderValue =
-                                                  values.start;
-                                            } else if (_currentSliderValue! >
-                                                values.end) {
-                                              _currentSliderValue = values.end;
-                                            }
-                                          }
-                                          _filterPoints();
-                                        });
-                                      }
-                                    : null,
+
+                            // Range Slider & Dates
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            // Max Limit Date
-                            Text(
-                              _maxDate != null
-                                  ? _formatDateTime(_maxDate!)
-                                  : '--:--',
-                              style: const TextStyle(fontSize: 12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50]!.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _minDate != null
+                                            ? _formatDateTime(_minDate!)
+                                            : '--/--/-- --:--',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[700],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      Text(
+                                        _maxDate != null
+                                            ? _formatDateTime(_maxDate!)
+                                            : '--/--/-- --:--',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Colors.grey[700],
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(
+                                    height: 30,
+                                    child: RangeSlider(
+                                      values:
+                                          _currentRangeValues ??
+                                          const RangeValues(0, 1),
+                                      min:
+                                          _minDate?.millisecondsSinceEpoch
+                                              .toDouble() ??
+                                          0,
+                                      max:
+                                          _maxDate?.millisecondsSinceEpoch
+                                              .toDouble() ??
+                                          1,
+                                      activeColor: Colors.grey[700],
+                                      inactiveColor: Colors.black12,
+                                      onChanged:
+                                          (_minDate != null &&
+                                              _maxDate != null &&
+                                              _minDate != _maxDate)
+                                          ? (RangeValues values) {
+                                              setState(() {
+                                                _currentRangeValues = values;
+                                                if (_currentSliderValue !=
+                                                    null) {
+                                                  if (_currentSliderValue! <
+                                                      values.start) {
+                                                    _currentSliderValue =
+                                                        values.start;
+                                                  } else if (_currentSliderValue! >
+                                                      values.end) {
+                                                    _currentSliderValue =
+                                                        values.end;
+                                                  }
+                                                }
+                                                _filterPoints();
+                                              });
+                                            }
+                                          : null,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
-                        // Selected Range Info
-                        const SizedBox(height: 4),
-                        Text(
-                          _currentRangeValues != null
-                              ? 'Rango: ${_formatDateTime(DateTime.fromMillisecondsSinceEpoch(_currentRangeValues!.start.toInt()))} - ${_formatDateTime(DateTime.fromMillisecondsSinceEpoch(_currentRangeValues!.end.toInt()))}'
-                              : 'Cargue un archivo para filtrar por fecha',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-      ],
+          Positioned(
+            bottom: 200,
+            right: 24,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FloatingActionButton.small(
+                  heroTag: 'zoom_in',
+                  onPressed: () {
+                    final currentZoom = _mapController.camera.zoom;
+                    _mapController.move(
+                      _mapController.camera.center,
+                      currentZoom + 1,
+                    );
+                  },
+                  backgroundColor: Colors.white,
+                  child: const Icon(Icons.add, color: Colors.indigoAccent),
+                ),
+                const SizedBox(height: 8),
+                FloatingActionButton.small(
+                  heroTag: 'zoom_out',
+                  onPressed: () {
+                    final currentZoom = _mapController.camera.zoom;
+                    _mapController.move(
+                      _mapController.camera.center,
+                      currentZoom - 1,
+                    );
+                  },
+                  backgroundColor: Colors.white,
+                  child: const Icon(Icons.remove, color: Colors.indigoAccent),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.indigoAccent),
+          const SizedBox(width: 8),
+          Text(
+            '$label:',
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              color: Colors.grey[700],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w600)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDataBox(
+    String label,
+    String value,
+    Color bgColor,
+    Color accentColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: accentColor.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: accentColor.withOpacity(0.8),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: accentColor,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -616,9 +880,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   }
 
   void _ensureVisible(LatLng point) {
+    if (!mounted) return;
     final bounds = _mapController.camera.visibleBounds;
-    final latBuffer = (bounds.north - bounds.south).abs() * 0.1;
-    final lngBuffer = (bounds.east - bounds.west).abs() * 0.1;
+    // Increase buffer to 25% to account for floating UI cards
+    final latBuffer = (bounds.north - bounds.south).abs() * 0.25;
+    final lngBuffer = (bounds.east - bounds.west).abs() * 0.25;
 
     final safeBounds = LatLngBounds(
       LatLng(bounds.south + latBuffer, bounds.west + lngBuffer),
@@ -659,7 +925,6 @@ List<MapPoint> _extractMapPoints(List<Map<String, dynamic>> rows) {
 
 DateTime? _dateFromRow(Map<String, dynamic> row) {
   // Try to find a date column
-  final keys = row.keys.map((k) => k.toLowerCase()).toList();
   String? keyData;
   for (final k in ['fechahora', 'fecha', 'date', 'time', 'timestamp']) {
     final matchedKey = row.keys.firstWhere(
@@ -764,6 +1029,13 @@ String _formatTime(DateTime date) {
   return DateFormat('HH:mm').format(date);
 }
 
+String trimMatricula(String mat) {
+  if (mat.length > 20) {
+    return '${mat.substring(0, 17)}...';
+  }
+  return mat;
+}
+
 String _formatCoordinate(double value, bool isLat) {
   final absVal = value.abs();
   final degrees = absVal.floor();
@@ -771,5 +1043,12 @@ String _formatCoordinate(double value, bool isLat) {
 
   final minutesStr = minutes.toStringAsFixed(3).replaceAll('.', ',');
 
-  return '$degrees° $minutesStr\'';
+  String cardinal = '';
+  if (isLat) {
+    cardinal = value >= 0 ? 'N' : 'S';
+  } else {
+    cardinal = value >= 0 ? 'E' : 'O';
+  }
+
+  return '$degrees° $minutesStr\' $cardinal';
 }
