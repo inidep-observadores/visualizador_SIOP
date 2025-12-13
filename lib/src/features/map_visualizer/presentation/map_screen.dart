@@ -33,13 +33,17 @@ class MapPoint {
 class _Trip {
   final MapPoint startPoint;
   final MapPoint endPoint;
+  final List<LatLng> pathPoints;
 
   Color color;
+  bool isVisible;
 
   _Trip({
     required this.startPoint,
     required this.endPoint,
+    required this.pathPoints,
     this.color = Colors.blue,
+    this.isVisible = false,
   });
 
   DateTime get startTime => startPoint.timestamp!;
@@ -389,7 +393,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (points.length < 6) return [];
 
     List<_Trip> trips = [];
-    MapPoint? pendingDeparture;
+    int? pendingDepartureIndex;
 
     for (int i = 0; i <= points.length - 6; i++) {
       // Window of 6 points
@@ -420,21 +424,28 @@ class _MapScreenState extends ConsumerState<MapScreen>
           (p3.speed == 0 && p4.speed == 0 && p5.speed == 0);
 
       if (isDeparture) {
-        if (pendingDeparture == null) {
-          pendingDeparture = p3;
+        if (pendingDepartureIndex == null) {
+          pendingDepartureIndex = i + 3;
         } else {
-          pendingDeparture = p3;
+          pendingDepartureIndex = i + 3;
         }
       } else if (isArrival) {
-        if (pendingDeparture != null) {
+        if (pendingDepartureIndex != null) {
           final colorIndex = trips.length % _tripColors.length;
+          final endIndex = i + 3;
+          final pathPoints = points
+              .sublist(pendingDepartureIndex, endIndex + 1)
+              .map((p) => p.position)
+              .toList();
+
           final trip = _Trip(
-            startPoint: pendingDeparture,
-            endPoint: p3,
+            startPoint: points[pendingDepartureIndex],
+            endPoint: points[endIndex],
+            pathPoints: pathPoints,
             color: _tripColors[colorIndex],
           );
           trips.add(trip);
-          pendingDeparture = null;
+          pendingDepartureIndex = null;
         }
       }
     }
@@ -640,6 +651,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ],
                   ),
                 ],
+
+                if (_detectedTrips.any((t) => t.isVisible))
+                  PolylineLayer(
+                    polylines: [
+                      for (final trip in _detectedTrips)
+                        if (trip.isVisible)
+                          Polyline(
+                            points: trip.pathPoints,
+                            color: trip.color,
+                            strokeWidth: 1.5,
+                          ),
+                    ],
+                  ),
 
                 if (_filteredPoints.length > 1 && _showTrack)
                   PolylineLayer(
@@ -1204,52 +1228,89 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       ),
                                       borderRadius: BorderRadius.circular(4),
                                     ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                    child: Stack(
                                       children: [
-                                        Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Text(
-                                              'Etapa ${index + 1}',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 12,
-                                                color: trip.color,
-                                              ),
-                                            ),
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 2,
+                                        Padding(
+                                          padding: const EdgeInsets.only(
+                                            right: 24.0,
+                                          ), // Reserve space for icon
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                mainAxisAlignment:
+                                                    MainAxisAlignment
+                                                        .spaceBetween,
+                                                children: [
+                                                  Text(
+                                                    'Etapa ${index + 1}',
+                                                    style: TextStyle(
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                      fontSize: 12,
+                                                      color: trip.color,
+                                                    ),
                                                   ),
-                                              decoration: BoxDecoration(
-                                                color: trip.color,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 6,
+                                                          vertical: 2,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: trip.color,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            10,
+                                                          ),
+                                                    ),
+                                                    child: Text(
+                                                      '${trip.durationInDays} ${trip.durationInDays == 1 ? "día" : "días"}',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 10,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
-                                              child: Text(
-                                                '${trip.durationInDays} ${trip.durationInDays == 1 ? "día" : "días"}',
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
                                                 style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 11,
                                                 ),
                                               ),
+                                              Text(
+                                                'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        Positioned(
+                                          bottom: 0,
+                                          right: 0,
+                                          child: InkWell(
+                                            onTap: () {
+                                              setState(() {
+                                                trip.isVisible =
+                                                    !trip.isVisible;
+                                              });
+                                            },
+                                            child: Icon(
+                                              trip.isVisible
+                                                  ? Icons.visibility
+                                                  : Icons.visibility_off,
+                                              size: 20,
+                                              color: trip.color,
                                             ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
-                                          style: const TextStyle(fontSize: 11),
-                                        ),
-                                        Text(
-                                          'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
-                                          style: const TextStyle(fontSize: 11),
+                                          ),
                                         ),
                                       ],
                                     ),
