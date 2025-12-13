@@ -90,6 +90,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Timer? _playbackTimer;
 
   // Layer Visibility State
+  bool _showPoints = true;
+  bool _showTrack = true;
   bool _showCentolla = false;
   bool _showVieira = false;
 
@@ -639,19 +641,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   ),
                 ],
 
-                if (_filteredPoints.length > 1)
+                if (_filteredPoints.length > 1 && _showTrack)
                   PolylineLayer(
                     polylines: [
                       Polyline(
                         points: _filteredPoints.map((p) => p.position).toList(),
                         color: Colors.teal.withValues(alpha: 0.8),
-                        strokeWidth: 3.0,
+                        strokeWidth: 1.0,
                       ),
                     ],
                   ),
                 MarkerLayer(
                   markers: [
-                    ...positionMarkers,
+                    if (_showPoints) ...positionMarkers,
                     if (currentPoint != null)
                       Marker(
                         width: 40,
@@ -871,6 +873,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         ),
                       ),
                     ),
+                    _buildCompactSwitch(
+                      'Puntos',
+                      _showPoints,
+                      (val) => setState(() => _showPoints = val),
+                    ),
+                    _buildCompactSwitch(
+                      'Trayectoria',
+                      _showTrack,
+                      (val) => setState(() => _showTrack = val),
+                    ),
+                    const SizedBox(height: 8),
                     _buildCompactSwitch(
                       'Vieira',
                       _showVieira,
