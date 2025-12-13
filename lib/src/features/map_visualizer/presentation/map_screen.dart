@@ -381,15 +381,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final fallbackZoom = points.isNotEmpty ? 6.0 : 5.0;
 
     _scheduleViewAdjustment(trackBounds, mapCenter, fallbackZoom);
-
-    // Trip Discovery
-    if (points.isNotEmpty) {
-      _detectTrips(points);
-    }
   }
 
-  void _detectTrips(List<MapPoint> points) {
-    if (points.length < 6) return;
+  List<_Trip> _detectTrips(List<MapPoint> points) {
+    if (points.length < 6) return [];
 
     List<_Trip> trips = [];
     MapPoint? pendingDeparture;
@@ -441,28 +436,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
         }
       }
     }
-
-    if (mounted) {
-      setState(() {
-        _detectedTrips = trips;
-      });
-    }
+    return trips;
   }
 
   void _filterPoints() {
     if (_currentRangeValues == null || _minDate == null || _maxDate == null) {
       _filteredPoints = List.from(_allPoints);
-      return;
+    } else {
+      final startMs = _currentRangeValues!.start;
+      final endMs = _currentRangeValues!.end;
+
+      _filteredPoints = _allPoints.where((p) {
+        if (p.timestamp == null) return false;
+        final pMs = p.timestamp!.millisecondsSinceEpoch.toDouble();
+        return pMs >= startMs && pMs <= endMs;
+      }).toList();
     }
-
-    final startMs = _currentRangeValues!.start;
-    final endMs = _currentRangeValues!.end;
-
-    _filteredPoints = _allPoints.where((p) {
-      if (p.timestamp == null) return false;
-      final pMs = p.timestamp!.millisecondsSinceEpoch.toDouble();
-      return pMs >= startMs && pMs <= endMs;
-    }).toList();
+    _detectedTrips = _detectTrips(_filteredPoints);
   }
 
   // Helper to find the "selected" point based on current slider value
