@@ -449,6 +449,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               setState(() {
                                 _currentSliderValue = value;
                               });
+                              final selected = _selectedPoint;
+                              if (selected != null) {
+                                _ensureVisible(selected.position);
+                              }
                             },
                           ),
 
@@ -597,12 +601,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return 4.5;
   }
 
-  static bool _boundsMatch(LatLngBounds? previous, LatLngBounds? current) {
+  bool _boundsMatch(LatLngBounds? previous, LatLngBounds? current) {
     if (previous == null || current == null) return previous == current;
     return previous.southWest.latitude == current.southWest.latitude &&
         previous.southWest.longitude == current.southWest.longitude &&
         previous.northEast.latitude == current.northEast.latitude &&
         previous.northEast.longitude == current.northEast.longitude;
+  }
+
+  void _ensureVisible(LatLng point) {
+    final bounds = _mapController.camera.visibleBounds;
+    final latBuffer = (bounds.north - bounds.south).abs() * 0.1;
+    final lngBuffer = (bounds.east - bounds.west).abs() * 0.1;
+
+    final safeBounds = LatLngBounds(
+      LatLng(bounds.south + latBuffer, bounds.west + lngBuffer),
+      LatLng(bounds.north - latBuffer, bounds.east - lngBuffer),
+    );
+
+    if (!safeBounds.contains(point)) {
+      _mapController.move(point, _mapController.camera.zoom);
+    }
   }
 }
 
