@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/application/geojson_service.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
 
@@ -374,6 +375,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   Widget build(BuildContext context) {
     final excelDataState = ref.watch(excelDataProvider);
+    final geoJsonAsync = ref.watch(geoJsonServiceProvider);
+
+    debugPrint('MapScreen build: GeoJson State: $geoJsonAsync');
 
     ref.listen<AsyncValue<List<Map<String, dynamic>>?>>(excelDataProvider, (
       _,
@@ -484,8 +488,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
               children: [
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'com.example.siop_data_visualizer',
+                  userAgentPackageName:
+                      'com.danielditullio.siop_data_visualizer',
                 ),
+
+                // GeoJSON Layers (Below tracks)
+                if (geoJsonAsync.value != null) ...[
+                  PolygonLayer(polygons: geoJsonAsync.value!.polygons),
+                  PolylineLayer(polylines: geoJsonAsync.value!.polylines),
+                ],
+
                 if (_filteredPoints.length > 1)
                   PolylineLayer(
                     polylines: [
