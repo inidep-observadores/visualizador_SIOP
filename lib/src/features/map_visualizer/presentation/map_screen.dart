@@ -1887,19 +1887,35 @@ DateTime? _dateFromRow(Map<String, dynamic> row) {
   final val = row[keyData];
   if (val == null) return null;
 
-  if (val is DateTime) return val;
+  if (val is DateTime) {
+    if (val.isUtc) {
+      return val.toLocal();
+    }
+    return val;
+  }
 
   final str = val.toString().trim();
   try {
     String isoStr = str.replaceAll(' ', 'T');
-    if (!isoStr.endsWith('Z') &&
-        !isoStr.contains('+') &&
-        !isoStr.contains('-')) {
-      isoStr = '${isoStr}Z';
+
+    // Naively parse first
+    DateTime temp = DateTime.parse(isoStr);
+
+    // If it parsed as Local (implied by no offset/Z), but we Treat Input As UTC:
+    if (!temp.isUtc) {
+      temp = DateTime.utc(
+        temp.year,
+        temp.month,
+        temp.day,
+        temp.hour,
+        temp.minute,
+        temp.second,
+        temp.millisecond,
+        temp.microsecond,
+      );
     }
 
-    final utcDate = DateTime.parse(isoStr);
-    return utcDate.toLocal();
+    return temp.toLocal();
   } catch (e) {
     return null;
   }

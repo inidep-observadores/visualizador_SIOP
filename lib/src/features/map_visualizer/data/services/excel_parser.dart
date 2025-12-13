@@ -116,7 +116,16 @@ List<Map<String, dynamic>> parseCsvBytes(List<int> bytes) {
 }
 
 void _parseCellData(Map<String, dynamic> rowData, String key, dynamic value) {
-  if (key == 'FECHA Y HORA' && value != null) {
+  final normalizedKey = key.trim().toLowerCase();
+  final isDateCol = [
+    'fechahora',
+    'fecha',
+    'date',
+    'time',
+    'timestamp',
+  ].contains(normalizedKey);
+
+  if (isDateCol && value != null) {
     if (value is String) {
       if (value == '0') {
         rowData[key] = null;
@@ -125,7 +134,16 @@ void _parseCellData(Map<String, dynamic> rowData, String key, dynamic value) {
           // The format from the user is "12/7/2025 00:08:57"
           // Also handle slight variations if needed, but strict is safer for now.
           // Use explicit pattern to match existing logic
-          rowData[key] = DateFormat("d/M/yyyy HH:mm:ss").parse(value);
+          // Force UTC parsing
+          final tempDate = DateFormat("d/M/yyyy HH:mm:ss").parse(value);
+          rowData[key] = DateTime.utc(
+            tempDate.year,
+            tempDate.month,
+            tempDate.day,
+            tempDate.hour,
+            tempDate.minute,
+            tempDate.second,
+          );
         } catch (e) {
           // Fallback: try standard ISO or other common formats if needed
           // For now, keep original behavior:
@@ -135,7 +153,7 @@ void _parseCellData(Map<String, dynamic> rowData, String key, dynamic value) {
     } else if (value is double || value is int) {
       // Handle numeric dates from Excel.
       // Excel's epoch starts on 1899-12-30.
-      final excelEpoch = DateTime(1899, 12, 30);
+      final excelEpoch = DateTime.utc(1899, 12, 30);
       final duration = Duration(days: (value as num).toInt());
       // Add fractional day for time?
       // The 'value' from excel might be integer for date only, or double for date+time.
