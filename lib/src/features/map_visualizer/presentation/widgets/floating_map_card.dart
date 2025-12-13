@@ -22,7 +22,7 @@ class FloatingMapCard extends StatelessWidget {
         child: Card(
           elevation: elevation,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-          color: Colors.white.withValues(alpha: 0.5),
+          color: Colors.white.withValues(alpha: 0.7),
           child: Padding(padding: padding, child: child),
         ),
       ),
