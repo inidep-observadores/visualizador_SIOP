@@ -810,6 +810,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   ),
                 ],
 
+                if (_filteredPoints.length > 1 && _showTrack)
+                  PolylineLayer(
+                    polylines: [
+                      Polyline(
+                        points: _filteredPoints.map((p) => p.position).toList(),
+                        color: Colors.teal.withValues(alpha: 0.8),
+                        strokeWidth: 1.0,
+                      ),
+                    ],
+                  ),
+
                 if (_detectedTrips.any((t) => t.isVisible))
                   PolylineLayer(
                     polylines: [
@@ -823,16 +834,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ],
                   ),
 
-                if (_filteredPoints.length > 1 && _showTrack)
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: _filteredPoints.map((p) => p.position).toList(),
-                        color: Colors.teal.withValues(alpha: 0.8),
-                        strokeWidth: 1.0,
-                      ),
-                    ],
-                  ),
                 MarkerLayer(
                   markers: [
                     if (_showPoints) ...positionMarkers,
@@ -1336,7 +1337,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        '${_detectedTrips.length} ETAPAS',
+                        '${_detectedTrips.length} ${_detectedTrips.length == 1 ? "ETAPA" : "ETAPAS"}',
                         style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
@@ -1347,7 +1348,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        '${_calculateUniqueNavigatedDays()} días navegados',
+                        '${_calculateUniqueNavigatedDays()} ${_calculateUniqueNavigatedDays() == 1 ? "día" : "días"} navegados',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w500,
