@@ -3,16 +3,27 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_map/flutter_map.dart'; // Importar flutter_map
-import 'package:latlong2/latlong.dart'; // Importar latlong2
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
 import 'package:intl/intl.dart';
 
 class MapPoint {
   final LatLng position;
   final DateTime? timestamp;
+  final String? shipName;
+  final String? matricula;
+  final double? speed;
+  final double? course;
 
-  MapPoint({required this.position, this.timestamp});
+  MapPoint({
+    required this.position,
+    this.timestamp,
+    this.shipName,
+    this.matricula,
+    this.speed,
+    this.course,
+  });
 }
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -31,8 +42,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   List<MapPoint> _filteredPoints = [];
   DateTime? _minDate;
   DateTime? _maxDate;
-  RangeValues?
-  _currentRangeValues; // Stores timestamps as milliseconds since epoch (double)
+  RangeValues? _currentRangeValues;
   double? _currentSliderValue;
 
   /// Opens the file picker and triggers the data loading process via the provider.
@@ -49,7 +59,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ref.read(excelDataProvider.notifier).loadFromFile(path);
       }
     } catch (e) {
-      // Show a generic error for file picking issues
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Error al seleccionar el archivo: $e')),
       );
@@ -137,6 +146,27 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     }).toList();
   }
 
+  // Helper to find the "selected" point based on current slider value
+  MapPoint? get _selectedPoint {
+    if (_currentSliderValue == null || _allPoints.isEmpty) return null;
+
+    // Find point closest to current timestamp
+    MapPoint? closest;
+    double minDiff = double.infinity;
+
+    for (final p in _allPoints) {
+      if (p.timestamp != null) {
+        final diff =
+            (p.timestamp!.millisecondsSinceEpoch - _currentSliderValue!).abs();
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = p;
+        }
+      }
+    }
+    return closest;
+  }
+
   @override
   Widget build(BuildContext context) {
     final excelDataState = ref.watch(excelDataProvider);
@@ -167,7 +197,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       );
     });
 
-    // Check consistency on hot reload
     if (_allPoints.isEmpty &&
         excelDataState.value != null &&
         !_didInfinitLoopCheck) {
@@ -197,6 +226,17 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           ),
         )
         .toList();
+
+    // Determine current ship info
+    final currentPoint = _selectedPoint;
+    final shipName =
+        currentPoint?.shipName ??
+        (_allPoints.isNotEmpty ? _allPoints.first.shipName : 'N/A') ??
+        'N/A';
+    final matricula =
+        currentPoint?.matricula ??
+        (_allPoints.isNotEmpty ? _allPoints.first.matricula : 'N/A') ??
+        'N/A';
 
     return Column(
       children: [
@@ -237,21 +277,45 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const Divider(),
-                            const Text('Nombre: N/A'),
-                            const Text('Matrícula: N/A'),
+                            Text('Nombre: $shipName'),
+                            Text('Matrícula: $matricula'),
                             const SizedBox(height: 20),
                             Text(
-                              'Estadísticas',
+                              'Información de Posicionamiento',
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                             const Divider(),
+                            // Show positioning info for the selected time
+                            if (currentPoint != null &&
+                                currentPoint.timestamp != null) ...[
+                              Text(
+                                'Fecha: ${_formatDate(currentPoint.timestamp!)}',
+                              ),
+                              Text(
+                                'Hora: ${_formatTime(currentPoint.timestamp!)}',
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Latitud: ${_formatCoordinate(currentPoint.position.latitude, true)}',
+                              ),
+                              Text(
+                                'Longitud: ${_formatCoordinate(currentPoint.position.longitude, false)}',
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Velocidad: ${currentPoint.speed?.toStringAsFixed(1) ?? "0.0"} kn',
+                              ),
+                              Text(
+                                'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "0"}º',
+                              ),
+                            ] else ...[
+                              const Text('Seleccione un punto en el tiempo'),
+                            ],
+
+                            const Spacer(),
+                            const Divider(),
                             Text('Total de puntos: ${_allPoints.length}'),
                             Text('Visibles: ${_filteredPoints.length}'),
-                            const SizedBox(height: 10),
-                            if (_minDate != null)
-                              Text('Inicio: ${_formatDateTime(_minDate!)}'),
-                            if (_maxDate != null)
-                              Text('Fin: ${_formatDateTime(_maxDate!)}'),
                           ],
                         ),
                       ),
@@ -269,7 +333,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             urlTemplate:
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName:
-                                'com.example.siop_data_visualizer', // Reemplaza con tu package name
+                                'com.example.siop_data_visualizer',
                           ),
                           if (_filteredPoints.length > 1)
                             PolylineLayer(
@@ -292,7 +356,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               ),
               // Bottom Timeline Panel
               Container(
-                height: 150, // Increased height for two sliders
+                height: 150,
                 color: Colors.grey[300],
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
@@ -503,7 +567,21 @@ List<MapPoint> _extractMapPoints(List<Map<String, dynamic>> rows) {
     final latLng = _latLngFromRow(row);
     if (latLng != null) {
       final date = _dateFromRow(row);
-      points.add(MapPoint(position: latLng, timestamp: date));
+      final shipName = _getStringFromRow(row, 'buque');
+      final matricula = _getStringFromRow(row, 'matricula');
+      final speed = _coordinateFromRow(row, 'velocidad');
+      final course = _coordinateFromRow(row, 'rumbo');
+
+      points.add(
+        MapPoint(
+          position: latLng,
+          timestamp: date,
+          shipName: shipName,
+          matricula: matricula,
+          speed: speed,
+          course: course,
+        ),
+      );
     }
   }
   return points;
@@ -571,6 +649,22 @@ double? _coordinateFromRow(Map<String, dynamic> row, String columnName) {
   return _parseDouble(rawValue);
 }
 
+String? _getStringFromRow(Map<String, dynamic> row, String columnName) {
+  final normalizedTarget = columnName.trim().toLowerCase();
+  final matchedKey = row.keys.firstWhere(
+    (key) => key.trim().toLowerCase() == normalizedTarget,
+    orElse: () => '',
+  );
+
+  if (matchedKey.isEmpty) {
+    return null;
+  }
+
+  final val = row[matchedKey];
+  if (val == null) return null;
+  return val.toString().trim();
+}
+
 double? _parseDouble(Object? value) {
   if (value == null) {
     return null;
@@ -598,4 +692,14 @@ String _formatDate(DateTime date) {
 
 String _formatTime(DateTime date) {
   return DateFormat('HH:mm').format(date);
+}
+
+String _formatCoordinate(double value, bool isLat) {
+  final absVal = value.abs();
+  final degrees = absVal.floor();
+  final minutes = (absVal - degrees) * 60;
+
+  final minutesStr = minutes.toStringAsFixed(3).replaceAll('.', ',');
+
+  return '$degrees° $minutesStr\'';
 }
