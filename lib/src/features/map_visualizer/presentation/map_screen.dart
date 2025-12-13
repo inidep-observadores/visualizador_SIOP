@@ -936,7 +936,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                   elevation: 3,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 24.0,
-                    vertical: 16.0,
+                    vertical: 8.0,
                   ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -953,14 +953,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                 onPressed: _skipToStart,
                                 icon: const Icon(Icons.skip_previous), // Start
                                 color: Colors.grey[700],
-                                iconSize: 20,
+                                iconSize: 18,
                                 tooltip: 'Inicio',
                               ),
                               IconButton(
                                 onPressed: _stepBackward,
                                 icon: const Icon(Icons.navigate_before), // Prev
                                 color: Colors.grey[700],
-                                iconSize: 24,
+                                iconSize: 22,
                                 tooltip: 'Anterior',
                               ),
                               IconButton(
@@ -971,21 +971,21 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       : Icons.play_circle_filled,
                                 ),
                                 color: Colors.indigoAccent,
-                                iconSize: 36, // Larger
+                                iconSize: 32, // Larger
                                 tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
                               ),
                               IconButton(
                                 onPressed: () => _stepForward(),
                                 icon: const Icon(Icons.navigate_next), // Next
                                 color: Colors.grey[700],
-                                iconSize: 24,
+                                iconSize: 22,
                                 tooltip: 'Siguiente',
                               ),
                               IconButton(
                                 onPressed: _skipToEnd,
                                 icon: const Icon(Icons.skip_next), // End
                                 color: Colors.grey[700],
-                                iconSize: 20,
+                                iconSize: 18,
                                 tooltip: 'Fin',
                               ),
                             ],
@@ -1000,9 +1000,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       overlayColor: Colors.indigo.withValues(
                                         alpha: 0.2,
                                       ),
-                                      trackHeight: 4,
+                                      trackHeight: 2,
                                       thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 8,
+                                        enabledThumbRadius: 6,
                                       ),
                                     ),
                                     child: Slider(
@@ -1052,11 +1052,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ),
 
                       // Range Slider & Dates
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 0),
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 16,
-                          vertical: 8,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           // color: Colors.grey[50]!.withOpacity(0.5),
@@ -1073,7 +1073,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       ? _formatDateTime(_minDate!)
                                       : '--/--/-- --:--',
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     color: Colors.grey[700],
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1083,7 +1083,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       ? _formatDateTime(_maxDate!)
                                       : '--/--/-- --:--',
                                   style: TextStyle(
-                                    fontSize: 11,
+                                    fontSize: 10,
                                     color: Colors.grey[700],
                                     fontWeight: FontWeight.w500,
                                   ),
@@ -1091,14 +1091,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               ],
                             ),
                             SizedBox(
-                              height: 30,
+                              height: 20,
                               child: SliderTheme(
                                 data: SliderTheme.of(context).copyWith(
                                   activeTrackColor: Colors.indigoAccent,
                                   inactiveTrackColor: Colors.black12,
+                                  trackHeight: 2,
                                   rangeThumbShape:
                                       const RoundRangeSliderThumbShape(
-                                        enabledThumbRadius: 6,
+                                        enabledThumbRadius: 4,
                                       ),
                                   overlayColor: Colors.indigo.withOpacity(0.2),
                                   valueIndicatorColor: Colors.indigo,
