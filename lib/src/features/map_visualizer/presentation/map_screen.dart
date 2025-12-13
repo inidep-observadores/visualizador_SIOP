@@ -61,6 +61,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   bool _isPlaying = false;
   Timer? _playbackTimer;
 
+  // Layer Visibility State
+  bool _showCentolla = false;
+  bool _showVieira = false;
+
   @override
   void initState() {
     super.initState();
@@ -372,6 +376,29 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return closest;
   }
 
+  Widget _buildCompactSwitch(
+    String label,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12)),
+        Transform.scale(
+          scale: 0.6,
+          alignment: Alignment.centerRight,
+          child: Switch(
+            value: value,
+            onChanged: onChanged,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            // visualDensity: VisualDensity.compact, // Not available in Switch
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final excelDataState = ref.watch(excelDataProvider);
@@ -453,7 +480,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 textStyle: const TextStyle(color: Colors.white, fontSize: 12),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Colors.blueAccent.withOpacity(0.6),
+                    color: Colors.blueAccent.withValues(alpha: 0.6),
                     shape: BoxShape.circle,
                     border: Border.all(color: Colors.white, width: 1),
                   ),
@@ -494,8 +521,22 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
                 // GeoJSON Layers (Below tracks)
                 if (geoJsonAsync.value != null) ...[
-                  PolygonLayer(polygons: geoJsonAsync.value!.polygons),
-                  PolylineLayer(polylines: geoJsonAsync.value!.polylines),
+                  PolygonLayer(
+                    polygons: [
+                      ...geoJsonAsync.value!.otherPolygons,
+                      if (_showCentolla)
+                        ...geoJsonAsync.value!.centollaPolygons,
+                      if (_showVieira) ...geoJsonAsync.value!.vieiraPolygons,
+                    ],
+                  ),
+                  PolylineLayer(
+                    polylines: [
+                      ...geoJsonAsync.value!.otherPolylines,
+                      if (_showCentolla)
+                        ...geoJsonAsync.value!.centollaPolylines,
+                      if (_showVieira) ...geoJsonAsync.value!.vieiraPolylines,
+                    ],
+                  ),
                 ],
 
                 if (_filteredPoints.length > 1)
@@ -503,7 +544,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     polylines: [
                       Polyline(
                         points: _filteredPoints.map((p) => p.position).toList(),
-                        color: Colors.teal.withOpacity(0.8),
+                        color: Colors.teal.withValues(alpha: 0.8),
                         strokeWidth: 3.0,
                       ),
                     ],
@@ -600,7 +641,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         FloatingActionButton.small(
                           onPressed: isLoading ? null : _pickFile,
                           elevation: 0,
-                          backgroundColor: Colors.white.withOpacity(0.5),
+                          backgroundColor: Colors.white.withValues(alpha: 0.5),
                           foregroundColor: Colors.indigoAccent,
                           child: isLoading
                               ? const SizedBox(
@@ -638,7 +679,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       _buildDataBox(
                         'LATITUD',
                         _formatCoordinate(currentPoint.position.latitude, true),
-                        Colors.blue.shade50.withOpacity(0.4),
+                        Colors.blue.shade50.withValues(alpha: 0.4),
                         Colors.blue.shade900,
                       ),
                       const SizedBox(height: 8),
@@ -650,7 +691,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           currentPoint.position.longitude,
                           false,
                         ),
-                        Colors.blue.shade50.withOpacity(0.4),
+                        Colors.blue.shade50.withValues(alpha: 0.4),
                         Colors.blue.shade900,
                       ),
                       const SizedBox(height: 12),
@@ -697,7 +738,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         padding: const EdgeInsets.all(12),
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: Colors.grey[50]!.withOpacity(0.5),
+                          color: Colors.grey[50]!.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.grey[300]!),
                         ),
@@ -712,6 +753,34 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         ),
                       ),
                     ],
+
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+
+                    // Layer Controls
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'CAPAS VISIBLES',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700],
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ),
+                    _buildCompactSwitch(
+                      'Vieira',
+                      _showVieira,
+                      (val) => setState(() => _showVieira = val),
+                    ),
+                    _buildCompactSwitch(
+                      'Centolla',
+                      _showCentolla,
+                      (val) => setState(() => _showCentolla = val),
+                    ),
                   ],
                 ),
               ),
@@ -791,8 +860,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                     data: SliderTheme.of(context).copyWith(
                                       activeTrackColor: Colors.indigoAccent,
                                       thumbColor: Colors.indigo,
-                                      overlayColor: Colors.indigo.withOpacity(
-                                        0.2,
+                                      overlayColor: Colors.indigo.withValues(
+                                        alpha: 0.2,
                                       ),
                                       trackHeight: 4,
                                       thumbShape: const RoundSliderThumbShape(
@@ -899,7 +968,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                   valueIndicatorTextStyle: const TextStyle(
                                     color: Colors.white,
                                   ),
-                                  showValueIndicator: ShowValueIndicator.always,
+                                  showValueIndicator: ShowValueIndicator.onDrag,
                                 ),
                                 child: RangeSlider(
                                   values:
@@ -1033,7 +1102,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
       decoration: BoxDecoration(
         color: bgColor,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: accentColor.withOpacity(0.2)),
+        border: Border.all(color: accentColor.withValues(alpha: 0.2)),
       ),
       child: Column(
         children: [
@@ -1042,7 +1111,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
-              color: accentColor.withOpacity(0.8),
+              color: accentColor.withValues(alpha: 0.8),
             ),
           ),
           const SizedBox(height: 4),

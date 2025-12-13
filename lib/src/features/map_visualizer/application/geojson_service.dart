@@ -18,10 +18,33 @@ Future<GeoJsonData> geoJsonService(Ref ref) async {
 }
 
 class GeoJsonData {
-  final List<Polygon> polygons;
-  final List<Polyline> polylines;
+  final List<Polygon> centollaPolygons;
+  final List<Polyline> centollaPolylines;
+  final List<Polygon> vieiraPolygons;
+  final List<Polyline> vieiraPolylines;
+  final List<Polygon> otherPolygons;
+  final List<Polyline> otherPolylines;
 
-  GeoJsonData({this.polygons = const [], this.polylines = const []});
+  GeoJsonData({
+    this.centollaPolygons = const [],
+    this.centollaPolylines = const [],
+    this.vieiraPolygons = const [],
+    this.vieiraPolylines = const [],
+    this.otherPolygons = const [],
+    this.otherPolylines = const [],
+  });
+
+  // Backward compatibility getter if strictly needed, or just remove if unused
+  List<Polygon> get allPolygons => [
+    ...centollaPolygons,
+    ...vieiraPolygons,
+    ...otherPolygons,
+  ];
+  List<Polyline> get allPolylines => [
+    ...centollaPolylines,
+    ...vieiraPolylines,
+    ...otherPolylines,
+  ];
 }
 
 class GeoJsonService {
@@ -42,15 +65,19 @@ class GeoJsonService {
       'zona_economica_exclusiva.geojson',
       'ZCP.geojson',
       'Veda 2014.geojson',
-      'Veda_02-10.geojson',
+      'Veda Merluza Negra.geojson',
     ];
 
     final geoJsonPaths = geoJsonFiles.map((f) => 'assets/geojson/$f').toList();
 
     debugPrint('GeoJSON: Loading ${geoJsonPaths.length} hardcoded paths');
 
-    List<Polygon> allPolygons = [];
-    List<Polyline> allPolylines = [];
+    List<Polygon> centollaPolygons = [];
+    List<Polyline> centollaPolylines = [];
+    List<Polygon> vieiraPolygons = [];
+    List<Polyline> vieiraPolylines = [];
+    List<Polygon> otherPolygons = [];
+    List<Polyline> otherPolylines = [];
 
     for (final path in geoJsonPaths) {
       final fileName = path.split('/').last;
@@ -78,8 +105,16 @@ class GeoJsonService {
 
         parser.parseGeoJson(jsonMap);
 
-        allPolygons.addAll(parser.polygons);
-        allPolylines.addAll(parser.polylines);
+        if (fileName.contains('centolla')) {
+          centollaPolygons.addAll(parser.polygons);
+          centollaPolylines.addAll(parser.polylines);
+        } else if (fileName.contains('vieira')) {
+          vieiraPolygons.addAll(parser.polygons);
+          vieiraPolylines.addAll(parser.polylines);
+        } else {
+          otherPolygons.addAll(parser.polygons);
+          otherPolylines.addAll(parser.polylines);
+        }
 
         debugPrint('GeoJSON: Processing $fileName with color $color');
         debugPrint('  - Polygons: ${parser.polygons.length}');
@@ -97,21 +132,31 @@ class GeoJsonService {
     }
 
     debugPrint(
-      'GeoJSON: Total loaded - ${allPolygons.length} polygons, ${allPolylines.length} polylines',
+      'GeoJSON: Total loaded - Centolla: ${centollaPolygons.length}, Vieira: ${vieiraPolygons.length}, Other: ${otherPolygons.length}',
     );
 
-    return GeoJsonData(polygons: allPolygons, polylines: allPolylines);
+    return GeoJsonData(
+      centollaPolygons: centollaPolygons,
+      centollaPolylines: centollaPolylines,
+      vieiraPolygons: vieiraPolygons,
+      vieiraPolylines: vieiraPolylines,
+      otherPolygons: otherPolygons,
+      otherPolylines: otherPolylines,
+    );
   }
 
   Color _getColorForFile(String fileName) {
     // Basic heuristics for color coding
+    if (fileName.contains('Veda')) {
+      return Colors.red.withValues(alpha: 0.3);
+    }
     if (fileName.contains('centolla')) {
       return Colors.orange.withValues(alpha: 0.3);
     }
     if (fileName.contains('vieira')) {
       return Colors.purple.withValues(alpha: 0.3);
     }
-    if (fileName.contains('area')) {
+    if (fileName.contains('area') || fileName.contains('ZCP')) {
       return Colors.green.withValues(alpha: 0.2); // areas_protegidas
     }
     if (fileName.contains('zona') || fileName.contains('mar')) {
