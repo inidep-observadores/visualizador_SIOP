@@ -20,6 +20,6 @@ class ExcelData extends _$ExcelData {
   /// Updates the state to loading, then to data/error upon completion.
   Future<void> loadFromFile(String path) async {
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() => ExcelParser.parseFile(path));
+    state = await AsyncValue.guard(() => DataFileParser.parseFile(path));
   }
 }

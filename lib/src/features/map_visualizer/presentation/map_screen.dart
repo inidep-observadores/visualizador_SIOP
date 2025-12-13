@@ -295,11 +295,39 @@ class _MapScreenState extends ConsumerState<MapScreen>
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xls', 'xlsx'],
+        allowedExtensions: ['xls', 'xlsx', 'csv'],
       );
 
       if (result != null && result.files.single.path != null) {
         final path = result.files.single.path!;
+        final extension = result.files.single.extension?.toLowerCase();
+
+        if (extension == 'xls') {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'El formato .xls no está soportado. Por favor use .xlsx o .csv',
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        if (extension != 'xlsx' && extension != 'csv') {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Formato de archivo no válido. Solo se permiten .xlsx y .csv',
+              ),
+              backgroundColor: Colors.redAccent,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
         ref.read(excelDataProvider.notifier).loadFromFile(path);
       }
     } catch (e) {
@@ -785,6 +813,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           elevation: 0,
                           backgroundColor: Colors.white.withValues(alpha: 0.5),
                           foregroundColor: Colors.indigoAccent,
+                          tooltip: 'Cargar archivo de datos',
                           child: isLoading
                               ? const SizedBox(
                                   width: 12,
