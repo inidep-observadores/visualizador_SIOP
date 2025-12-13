@@ -1215,11 +1215,37 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                 itemCount: _detectedTrips.length,
                                 itemBuilder: (context, index) {
                                   final trip = _detectedTrips[index];
+
+                                  // Check if active based on slider time
+                                  bool isActive = false;
+                                  if (_currentSliderValue != null) {
+                                    final currentTime =
+                                        DateTime.fromMillisecondsSinceEpoch(
+                                          _currentSliderValue!.toInt(),
+                                        );
+                                    // Relaxed check: is currentTime within [start, end]?
+                                    // Use slight buffer or inclusive check
+                                    if (currentTime.isAfter(
+                                          trip.startTime.subtract(
+                                            const Duration(minutes: 1),
+                                          ),
+                                        ) &&
+                                        currentTime.isBefore(
+                                          trip.endTime.add(
+                                            const Duration(minutes: 1),
+                                          ),
+                                        )) {
+                                      isActive = true;
+                                    }
+                                  }
+
                                   return Container(
                                     margin: const EdgeInsets.only(bottom: 8),
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: trip.color.withValues(alpha: 0.1),
+                                      color: trip.color.withValues(
+                                        alpha: isActive ? 0.15 : 0.05,
+                                      ),
                                       border: Border(
                                         left: BorderSide(
                                           color: trip.color,
@@ -1243,14 +1269,30 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                                     MainAxisAlignment
                                                         .spaceBetween,
                                                 children: [
-                                                  Text(
-                                                    'Etapa ${index + 1}',
-                                                    style: TextStyle(
-                                                      fontWeight:
-                                                          FontWeight.bold,
-                                                      fontSize: 12,
-                                                      color: trip.color,
-                                                    ),
+                                                  Row(
+                                                    children: [
+                                                      if (isActive)
+                                                        Padding(
+                                                          padding:
+                                                              const EdgeInsets.only(
+                                                                right: 4,
+                                                              ),
+                                                          child: Icon(
+                                                            Icons.play_arrow,
+                                                            size: 10,
+                                                            color: trip.color,
+                                                          ),
+                                                        ),
+                                                      Text(
+                                                        'Etapa ${index + 1}',
+                                                        style: TextStyle(
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                          fontSize: 12,
+                                                          color: trip.color,
+                                                        ),
+                                                      ),
+                                                    ],
                                                   ),
                                                   Container(
                                                     padding:
