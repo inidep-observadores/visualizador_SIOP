@@ -129,25 +129,31 @@ class _MapScreenState extends ConsumerState<MapScreen>
     // Por ahora usemos un paso relativo al slider visual = 60000ms (1 min) si es gran escala, o algun delta.
     // O mejor: Next available point timestamp.
 
-    double nextVal = _currentSliderValue! + 60000; // +1 min default
-    // Find precise next point if available
-    final nextPoint = _allPoints.firstWhere(
-      (p) =>
-          p.timestamp != null &&
-          p.timestamp!.millisecondsSinceEpoch > _currentSliderValue!,
-      orElse: () => MapPoint(position: const LatLng(0, 0)), // Dummy
-    );
-
-    if (nextPoint.timestamp != null) {
-      // Si el siguiente punto está muy lejos (ej > 1 hora), saltamos a él?
-      // Para visualización fluida mejor saltar al siguiente punto real.
-      nextVal = nextPoint.timestamp!.millisecondsSinceEpoch.toDouble();
+    int currentIndex = -1;
+    if (_filteredPoints.isNotEmpty) {
+      currentIndex = _filteredPoints.indexWhere(
+        (p) =>
+            p.timestamp != null &&
+            p.timestamp!.millisecondsSinceEpoch == _currentSliderValue,
+      );
     }
 
-    if (nextVal >= _currentRangeValues!.end) {
-      nextVal = _currentRangeValues!.end;
+    // Fallback if not exact match (shouldn't happen with snap)
+    if (currentIndex == -1 && _filteredPoints.isNotEmpty) {
+      // logic to find closest? For now standard
+      currentIndex = 0;
+    }
+
+    int nextIndex = currentIndex + 1;
+    if (nextIndex >= _filteredPoints.length) {
+      nextIndex = _filteredPoints.length - 1;
       if (loop) _stopPlayback();
     }
+
+    final double nextVal = _filteredPoints[nextIndex]
+        .timestamp!
+        .millisecondsSinceEpoch
+        .toDouble();
 
     setState(() {
       _currentSliderValue = nextVal;
@@ -158,22 +164,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _stepBackward() {
     if (_currentSliderValue == null || _currentRangeValues == null) return;
 
-    // Previous available point
-    final prevPoint = _allPoints.lastWhere(
-      (p) =>
-          p.timestamp != null &&
-          p.timestamp!.millisecondsSinceEpoch < _currentSliderValue!,
-      orElse: () => MapPoint(position: const LatLng(0, 0)),
-    );
-
-    double prevVal = _currentSliderValue! - 60000;
-    if (prevPoint.timestamp != null) {
-      prevVal = prevPoint.timestamp!.millisecondsSinceEpoch.toDouble();
+    int currentIndex = -1;
+    if (_filteredPoints.isNotEmpty) {
+      currentIndex = _filteredPoints.indexWhere(
+        (p) =>
+            p.timestamp != null &&
+            p.timestamp!.millisecondsSinceEpoch == _currentSliderValue,
+      );
     }
 
-    if (prevVal <= _currentRangeValues!.start) {
-      prevVal = _currentRangeValues!.start;
+    int prevIndex = currentIndex - 1;
+    if (prevIndex < 0) {
+      prevIndex = 0;
     }
+
+    final double prevVal = _filteredPoints[prevIndex]
+        .timestamp!
+        .millisecondsSinceEpoch
+        .toDouble();
 
     setState(() {
       _currentSliderValue = prevVal;
@@ -184,7 +192,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _skipToStart() {
     if (_currentRangeValues == null) return;
     setState(() {
-      _currentSliderValue = _currentRangeValues!.start;
+      _currentSliderValue = _filteredPoints
+          .first
+          .timestamp!
+          .millisecondsSinceEpoch
+          .toDouble();
     });
     _updateSelectedPoint();
   }
@@ -192,7 +204,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _skipToEnd() {
     if (_currentRangeValues == null) return;
     setState(() {
-      _currentSliderValue = _currentRangeValues!.end;
+      _currentSliderValue = _filteredPoints
+          .last
+          .timestamp!
+          .millisecondsSinceEpoch
+          .toDouble();
     });
     _updateSelectedPoint();
   }
@@ -256,6 +272,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     final points = _extractMapPoints(data);
+    // Sort by timestamp
+    points.sort((a, b) {
+      if (a.timestamp == null && b.timestamp == null) return 0;
+      if (a.timestamp == null) return 1;
+      if (b.timestamp == null) return -1;
+      return a.timestamp!.compareTo(b.timestamp!);
+    });
 
     DateTime? min;
     DateTime? max;
@@ -765,24 +788,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       ),
                                     ),
                                     child: Slider(
-                                      value:
-                                          _currentSliderValue ??
-                                          _currentRangeValues!.start,
-                                      min: _currentRangeValues!.start,
-                                      max: _currentRangeValues!.end,
-                                      divisions:
-                                          (_currentRangeValues!.end -
-                                                  _currentRangeValues!.start) >
-                                              0
-                                          ? math.max(
-                                              1,
-                                              ((_currentRangeValues!.end -
-                                                          _currentRangeValues!
-                                                              .start) /
-                                                      60000)
-                                                  .round(),
-                                            )
-                                          : null,
+                                      value: _getSliderValueIndex(),
+                                      min: 0.0,
+                                      max: math.max(
+                                        0.0,
+                                        (_filteredPoints.length - 1).toDouble(),
+                                      ),
+                                      divisions: math.max(
+                                        1,
+                                        _filteredPoints.length - 1,
+                                      ),
                                       label: _currentSliderValue != null
                                           ? _formatDateTime(
                                               DateTime.fromMillisecondsSinceEpoch(
@@ -791,16 +806,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                             )
                                           : null,
                                       onChanged: (value) {
-                                        setState(() {
-                                          _currentSliderValue = value;
-                                        });
-                                        final selected = _selectedPoint;
-                                        if (selected != null) {
-                                          _updateMarkerTarget(
-                                            selected.position,
-                                            animate: true,
-                                          );
-                                          _ensureVisible(selected.position);
+                                        final index = value.round();
+                                        if (index >= 0 &&
+                                            index < _filteredPoints.length) {
+                                          setState(() {
+                                            _currentSliderValue =
+                                                _filteredPoints[index]
+                                                    .timestamp!
+                                                    .millisecondsSinceEpoch
+                                                    .toDouble();
+                                          });
+                                          final selected = _selectedPoint;
+                                          if (selected != null) {
+                                            _updateMarkerTarget(
+                                              selected.position,
+                                              animate: true,
+                                            );
+                                            _ensureVisible(selected.position);
+                                          }
                                         }
                                       },
                                     ),
@@ -851,41 +874,71 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             ),
                             SizedBox(
                               height: 30,
-                              child: RangeSlider(
-                                values:
-                                    _currentRangeValues ??
-                                    const RangeValues(0, 1),
-                                min:
-                                    _minDate?.millisecondsSinceEpoch
-                                        .toDouble() ??
-                                    0,
-                                max:
-                                    _maxDate?.millisecondsSinceEpoch
-                                        .toDouble() ??
-                                    1,
-                                activeColor: Colors.grey[700],
-                                inactiveColor: Colors.black12,
-                                onChanged:
-                                    (_minDate != null &&
-                                        _maxDate != null &&
-                                        _minDate != _maxDate)
-                                    ? (RangeValues values) {
-                                        setState(() {
-                                          _currentRangeValues = values;
-                                          if (_currentSliderValue != null) {
-                                            if (_currentSliderValue! <
-                                                values.start) {
-                                              _currentSliderValue =
-                                                  values.start;
-                                            } else if (_currentSliderValue! >
-                                                values.end) {
-                                              _currentSliderValue = values.end;
+                              child: SliderTheme(
+                                data: SliderTheme.of(context).copyWith(
+                                  activeTrackColor: Colors.indigoAccent,
+                                  inactiveTrackColor: Colors.black12,
+                                  rangeThumbShape:
+                                      const RoundRangeSliderThumbShape(
+                                        enabledThumbRadius: 6,
+                                      ),
+                                  overlayColor: Colors.indigo.withOpacity(0.2),
+                                  valueIndicatorColor: Colors.indigo,
+                                  valueIndicatorTextStyle: const TextStyle(
+                                    color: Colors.white,
+                                  ),
+                                  showValueIndicator: ShowValueIndicator.always,
+                                ),
+                                child: RangeSlider(
+                                  values:
+                                      _currentRangeValues ??
+                                      const RangeValues(0, 1),
+                                  min:
+                                      _minDate?.millisecondsSinceEpoch
+                                          .toDouble() ??
+                                      0,
+                                  max:
+                                      _maxDate?.millisecondsSinceEpoch
+                                          .toDouble() ??
+                                      1,
+                                  labels: _currentRangeValues != null
+                                      ? RangeLabels(
+                                          _formatDateTime(
+                                            DateTime.fromMillisecondsSinceEpoch(
+                                              _currentRangeValues!.start
+                                                  .toInt(),
+                                            ),
+                                          ),
+                                          _formatDateTime(
+                                            DateTime.fromMillisecondsSinceEpoch(
+                                              _currentRangeValues!.end.toInt(),
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  onChanged:
+                                      (_minDate != null &&
+                                          _maxDate != null &&
+                                          _minDate != _maxDate)
+                                      ? (RangeValues values) {
+                                          setState(() {
+                                            _currentRangeValues = values;
+                                            if (_currentSliderValue != null) {
+                                              if (_currentSliderValue! <
+                                                  values.start) {
+                                                _currentSliderValue =
+                                                    values.start;
+                                              } else if (_currentSliderValue! >
+                                                  values.end) {
+                                                _currentSliderValue =
+                                                    values.end;
+                                              }
                                             }
-                                          }
-                                          _filterPoints();
-                                        });
-                                      }
-                                    : null,
+                                            _filterPoints();
+                                          });
+                                        }
+                                      : null,
+                                ),
                               ),
                             ),
                           ],
@@ -1114,6 +1167,21 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (!safeBounds.contains(point)) {
       _animatedMapMove(point, _mapController.camera.zoom);
     }
+  }
+
+  double _getSliderValueIndex() {
+    if (_filteredPoints.isEmpty || _currentSliderValue == null) return 0.0;
+
+    // Find precise index
+    final index = _filteredPoints.indexWhere(
+      (p) =>
+          p.timestamp != null &&
+          p.timestamp!.millisecondsSinceEpoch == _currentSliderValue,
+    );
+
+    if (index != -1) return index.toDouble();
+
+    return 0.0;
   }
 }
 
