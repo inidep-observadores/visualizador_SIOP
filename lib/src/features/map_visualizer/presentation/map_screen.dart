@@ -34,7 +34,8 @@ class MapScreen extends ConsumerStatefulWidget {
   ConsumerState<MapScreen> createState() => _MapScreenState();
 }
 
-class _MapScreenState extends ConsumerState<MapScreen> {
+class _MapScreenState extends ConsumerState<MapScreen>
+    with TickerProviderStateMixin {
   final MapController _mapController = MapController();
   LatLngBounds? _lastFittedBounds;
 
@@ -45,6 +46,61 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   DateTime? _maxDate;
   RangeValues? _currentRangeValues;
   double? _currentSliderValue;
+
+  // Marker Animation
+  late AnimationController _markerAnimController;
+  LatLng? _animatedMarkerPosition;
+  LatLng? _markerTargetPosition;
+  LatLng? _markerStartPos;
+  LatLng? _markerEndPos;
+
+  @override
+  void initState() {
+    super.initState();
+    _markerAnimController = AnimationController(
+      duration: const Duration(milliseconds: 150),
+      vsync: this,
+    );
+    _markerAnimController.addListener(() {
+      if (_markerStartPos != null && _markerEndPos != null) {
+        setState(() {
+          final t = _markerAnimController.value;
+          final lat = lerpDouble(
+            _markerStartPos!.latitude,
+            _markerEndPos!.latitude,
+            t,
+          )!;
+          final lng = lerpDouble(
+            _markerStartPos!.longitude,
+            _markerEndPos!.longitude,
+            t,
+          )!;
+          _animatedMarkerPosition = LatLng(lat, lng);
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _markerAnimController.dispose();
+    super.dispose();
+  }
+
+  void _updateMarkerTarget(LatLng newTarget, {bool animate = true}) {
+    if (_markerTargetPosition == newTarget) return;
+    _markerTargetPosition = newTarget;
+
+    if (!animate || _animatedMarkerPosition == null) {
+      _animatedMarkerPosition = newTarget;
+      _markerAnimController.stop();
+      return;
+    }
+
+    _markerStartPos = _animatedMarkerPosition;
+    _markerEndPos = newTarget;
+    _markerAnimController.forward(from: 0.0);
+  }
 
   /// Opens the file picker and triggers the data loading process via the provider.
   Future<void> _pickFile() async {
@@ -117,6 +173,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         }
 
         _filterPoints();
+
+        // 4. Set initial marker position
+        final initialPoint = _selectedPoint;
+        if (initialPoint != null) {
+          _updateMarkerTarget(initialPoint.position, animate: false);
+        }
       });
     }
 
@@ -287,7 +349,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Marker(
                         width: 40,
                         height: 40,
-                        point: currentPoint.position,
+                        point: _animatedMarkerPosition ?? currentPoint.position,
                         child: Tooltip(
                           message: _getTooltipMessage(currentPoint),
                           waitDuration: Duration.zero,
@@ -301,23 +363,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             turns: (currentPoint.course ?? 0) / 360,
                             duration: const Duration(milliseconds: 250),
                             curve: Curves.easeInOut,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white,
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black26,
-                                    blurRadius: 8,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(
-                                Icons.navigation,
-                                color: Colors.indigoAccent,
-                                size: 28,
-                              ),
+                            child: const Icon(
+                              Icons.navigation,
+                              color: Colors.indigoAccent,
+                              size: 40,
                             ),
                           ),
                         ),
@@ -619,6 +668,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                               });
                                               final selected = _selectedPoint;
                                               if (selected != null) {
+                                                _updateMarkerTarget(
+                                                  selected.position,
+                                                  animate: true,
+                                                );
                                                 _ensureVisible(
                                                   selected.position,
                                                 );
@@ -639,7 +692,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.grey[50]!.withOpacity(0.5),
+                                // color: Colors.grey[50]!.withOpacity(0.5),
+                                color: Colors.transparent,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               child: Column(
@@ -733,7 +787,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   heroTag: 'zoom_in',
                   onPressed: () {
                     final currentZoom = _mapController.camera.zoom;
-                    _mapController.move(
+                    _animatedMapMove(
                       _mapController.camera.center,
                       currentZoom + 1,
                     );
@@ -746,7 +800,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   heroTag: 'zoom_out',
                   onPressed: () {
                     final currentZoom = _mapController.camera.zoom;
-                    _mapController.move(
+                    _animatedMapMove(
                       _mapController.camera.center,
                       currentZoom - 1,
                     );
@@ -822,6 +876,52 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   bool _didInfinitLoopCheck = false;
 
+  void _animatedMapMove(LatLng destLocation, double destZoom) {
+    // Create some tweens. These serve to split up the transition from one location to another.
+    // In our case, we want to split the transition be<tween> our current map center and the destination.
+    final latTween = Tween<double>(
+      begin: _mapController.camera.center.latitude,
+      end: destLocation.latitude,
+    );
+    final lngTween = Tween<double>(
+      begin: _mapController.camera.center.longitude,
+      end: destLocation.longitude,
+    );
+    final zoomTween = Tween<double>(
+      begin: _mapController.camera.zoom,
+      end: destZoom,
+    );
+
+    // Create a controller that will handle the rotation of the map
+    final controller = AnimationController(
+      duration: const Duration(milliseconds: 500),
+      vsync: this,
+    );
+    // The animation determines what path the animation will take. You can try different Curves values, although I found
+    // fastOutSlowIn to be completely adequate.
+    final Animation<double> animation = CurvedAnimation(
+      parent: controller,
+      curve: Curves.fastOutSlowIn,
+    );
+
+    controller.addListener(() {
+      _mapController.move(
+        LatLng(latTween.evaluate(animation), lngTween.evaluate(animation)),
+        zoomTween.evaluate(animation),
+      );
+    });
+
+    animation.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        controller.dispose();
+      } else if (status == AnimationStatus.dismissed) {
+        controller.dispose();
+      }
+    });
+
+    controller.forward();
+  }
+
   void _scheduleViewAdjustment(
     LatLngBounds? bounds,
     LatLng fallbackCenter,
@@ -834,7 +934,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final targetZoom = bounds != null ? _zoomForBounds(bounds) : fallbackZoom;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _mapController.move(targetCenter, targetZoom);
+      _animatedMapMove(targetCenter, targetZoom);
     });
     _lastFittedBounds = bounds;
   }
@@ -892,7 +992,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     );
 
     if (!safeBounds.contains(point)) {
-      _mapController.move(point, _mapController.camera.zoom);
+      _animatedMapMove(point, _mapController.camera.zoom);
     }
   }
 }
