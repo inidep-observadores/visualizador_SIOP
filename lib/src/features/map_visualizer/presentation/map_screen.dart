@@ -30,6 +30,34 @@ class MapPoint {
   });
 }
 
+class _Trip {
+  final MapPoint startPoint;
+  final MapPoint endPoint;
+
+  Color color;
+
+  _Trip({
+    required this.startPoint,
+    required this.endPoint,
+    this.color = Colors.blue,
+  });
+
+  DateTime get startTime => startPoint.timestamp!;
+  DateTime get endTime => endPoint.timestamp!;
+
+  // Inclusive day calculation: 1st to 2nd is 2 days.
+  int get durationInDays {
+    final start = DateTime(startTime.year, startTime.month, startTime.day);
+    final end = DateTime(endTime.year, endTime.month, endTime.day);
+    return end.difference(start).inDays + 1;
+  }
+
+  @override
+  String toString() {
+    return 'Trip: ${DateFormat('dd/MM HH:mm').format(startTime)} -> ${DateFormat('dd/MM HH:mm').format(endTime)} ($durationInDays días)';
+  }
+}
+
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
 
@@ -64,6 +92,20 @@ class _MapScreenState extends ConsumerState<MapScreen>
   // Layer Visibility State
   bool _showCentolla = false;
   bool _showVieira = false;
+
+  // Trips
+  List<_Trip> _detectedTrips = [];
+
+  final List<Color> _tripColors = [
+    Colors.orange,
+    Colors.purple,
+    Colors.teal,
+    Colors.pink,
+    Colors.cyan,
+    Colors.amber,
+    Colors.indigo,
+    Colors.lime,
+  ];
 
   @override
   void initState() {
@@ -271,6 +313,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
           _maxDate = null;
           _currentRangeValues = null;
           _currentSliderValue = null;
+          _currentSliderValue = null;
+          _detectedTrips = [];
         });
       }
       return;
@@ -337,6 +381,72 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final fallbackZoom = points.isNotEmpty ? 6.0 : 5.0;
 
     _scheduleViewAdjustment(trackBounds, mapCenter, fallbackZoom);
+
+    // Trip Discovery
+    if (points.isNotEmpty) {
+      _detectTrips(points);
+    }
+  }
+
+  void _detectTrips(List<MapPoint> points) {
+    if (points.length < 6) return;
+
+    List<_Trip> trips = [];
+    MapPoint? pendingDeparture;
+
+    for (int i = 0; i <= points.length - 6; i++) {
+      // Window of 6 points
+      final p0 = points[i];
+      final p1 = points[i + 1];
+      final p2 = points[i + 2];
+      final p3 = points[i + 3];
+      final p4 = points[i + 4];
+      final p5 = points[i + 5];
+
+      if (p0.speed == null ||
+          p1.speed == null ||
+          p2.speed == null ||
+          p3.speed == null ||
+          p4.speed == null ||
+          p5.speed == null ||
+          p0.timestamp == null ||
+          p3.timestamp == null) {
+        continue;
+      }
+
+      bool isDeparture =
+          (p0.speed == 0 && p1.speed == 0 && p2.speed == 0) &&
+          (p3.speed! > 0 && p4.speed! > 0 && p5.speed! > 0);
+
+      bool isArrival =
+          (p0.speed! > 0 && p1.speed! > 0 && p2.speed! > 0) &&
+          (p3.speed == 0 && p4.speed == 0 && p5.speed == 0);
+
+      if (isDeparture) {
+        if (pendingDeparture == null) {
+          pendingDeparture = p3;
+        } else {
+          pendingDeparture = p3;
+        }
+      } else if (isArrival) {
+        if (pendingDeparture != null) {
+          final colorIndex = trips.length % _tripColors.length;
+          final trip = _Trip(
+            startPoint: pendingDeparture,
+            endPoint: p3,
+            color: _tripColors[colorIndex],
+          );
+          trips.add(trip);
+          pendingDeparture = null;
+        }
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _detectedTrips = trips;
+      });
+    }
   }
 
   void _filterPoints() {
@@ -1031,8 +1141,126 @@ class _MapScreenState extends ConsumerState<MapScreen>
               ),
             ),
           ),
+          // 4. Tarjeta Flotante de Etapas (Top Right)
+          if (_allPoints.isNotEmpty)
+            Positioned(
+              top: 24,
+              right: 24,
+              child: SizedBox(
+                width: 220,
+                child: FloatingMapCard(
+                  elevation: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${_detectedTrips.length} ETAPAS',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                          letterSpacing: 1,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 500),
+                        child: _detectedTrips.isEmpty
+                            ? Container(
+                                padding: const EdgeInsets.all(16),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'No se encontraron etapas',
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                    fontSize: 12,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.only(top: 8),
+                                shrinkWrap: true,
+                                itemCount: _detectedTrips.length,
+                                itemBuilder: (context, index) {
+                                  final trip = _detectedTrips[index];
+                                  return Container(
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: trip.color.withValues(alpha: 0.1),
+                                      border: Border(
+                                        left: BorderSide(
+                                          color: trip.color,
+                                          width: 4,
+                                        ),
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              'Etapa ${index + 1}',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                                color: trip.color,
+                                              ),
+                                            ),
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: trip.color,
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                              ),
+                                              child: Text(
+                                                '${trip.durationInDays} ${trip.durationInDays == 1 ? "día" : "días"}',
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                        Text(
+                                          'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
+                                          style: const TextStyle(fontSize: 11),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           Positioned(
-            bottom: 200,
+            bottom: 24,
             right: 24,
             child: Column(
               mainAxisSize: MainAxisSize.min,
