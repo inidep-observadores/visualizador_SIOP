@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
 
 class MapPoint {
@@ -513,185 +514,170 @@ class _MapScreenState extends ConsumerState<MapScreen>
             left: 24,
             child: SizedBox(
               width: 190, // Reduced width
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                  child: Card(
-                    elevation: 2,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    color: Colors.white.withValues(alpha: 0.5),
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Header con carga de archivo
-                          Row(
+
+              child: FloatingMapCard(
+                elevation: 2,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header con carga de archivo
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Buque',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.grey[700],
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      shipName == 'N/A'
-                                          ? 'Sin datos'
-                                          : shipName.toUpperCase(),
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.black87,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      matricula == 'N/A'
-                                          ? ''
-                                          : 'Mat. ${trimMatricula(matricula)}',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Colors.grey[800],
-                                      ),
-                                    ),
-                                  ],
+                              Text(
+                                'Buque',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.grey[700],
+                                  letterSpacing: 0.5,
                                 ),
                               ),
-                              FloatingActionButton.small(
-                                onPressed: isLoading ? null : _pickFile,
-                                elevation: 0,
-                                backgroundColor: Colors.white.withOpacity(0.5),
-                                foregroundColor: Colors.indigoAccent,
-                                child: isLoading
-                                    ? const SizedBox(
-                                        width: 12,
-                                        height: 12,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(
-                                        Icons.upload_file_outlined,
-                                        size: 18,
-                                      ),
+                              const SizedBox(height: 2),
+                              Text(
+                                shipName == 'N/A'
+                                    ? 'Sin datos'
+                                    : shipName.toUpperCase(),
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.black87,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                matricula == 'N/A'
+                                    ? ''
+                                    : 'Mat. ${trimMatricula(matricula)}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[800],
+                                ),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 12),
-                          const Divider(height: 1),
-                          const SizedBox(height: 12),
-
-                          Text(
-                            'POSICIÓN ACTUAL',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.grey[700],
-                              letterSpacing: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-
-                          if (currentPoint != null &&
-                              currentPoint.timestamp != null) ...[
-                            // 1. Latitud
-                            _buildDataBox(
-                              'LATITUD',
-                              _formatCoordinate(
-                                currentPoint.position.latitude,
-                                true,
-                              ),
-                              Colors.blue.shade50.withOpacity(0.4),
-                              Colors.blue.shade900,
-                            ),
-                            const SizedBox(height: 8),
-
-                            // 2. Longitud
-                            _buildDataBox(
-                              'LONGITUD',
-                              _formatCoordinate(
-                                currentPoint.position.longitude,
-                                false,
-                              ),
-                              Colors.blue.shade50.withOpacity(0.4),
-                              Colors.blue.shade900,
-                            ),
-                            const SizedBox(height: 12),
-
-                            // 3. Fecha
-                            _buildInfoRow(
-                              Icons.calendar_today_outlined,
-                              'Fecha',
-                              _formatDate(currentPoint.timestamp!),
-                            ),
-                            // 4. Hora
-                            _buildInfoRow(
-                              Icons.access_time_outlined,
-                              'Hora local',
-                              _formatTime(currentPoint.timestamp!),
-                            ),
-
-                            const SizedBox(height: 8),
-                            const Divider(height: 1),
-                            const SizedBox(height: 8),
-
-                            // Speed/Course Compact at bottom
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  'Vel: ${currentPoint.speed?.toStringAsFixed(1) ?? "-"} kn',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey[700],
+                        ),
+                        FloatingActionButton.small(
+                          onPressed: isLoading ? null : _pickFile,
+                          elevation: 0,
+                          backgroundColor: Colors.white.withOpacity(0.5),
+                          foregroundColor: Colors.indigoAccent,
+                          child: isLoading
+                              ? const SizedBox(
+                                  width: 12,
+                                  height: 12,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
                                   ),
+                                )
+                              : const Icon(
+                                  Icons.upload_file_outlined,
+                                  size: 18,
                                 ),
-                                Text(
-                                  'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "-"}º',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.grey[700],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ] else ...[
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[50]!.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: Colors.grey[300]!),
-                              ),
-                              child: const Text(
-                                'Seleccione un punto',
-                                style: TextStyle(
-                                  color: Colors.grey,
-                                  fontSize: 12,
-                                  fontStyle: FontStyle.italic,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ],
-                        ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 12),
+
+                    Text(
+                      'POSICIÓN ACTUAL',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey[700],
+                        letterSpacing: 1,
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+
+                    if (currentPoint != null &&
+                        currentPoint.timestamp != null) ...[
+                      // 1. Latitud
+                      _buildDataBox(
+                        'LATITUD',
+                        _formatCoordinate(currentPoint.position.latitude, true),
+                        Colors.blue.shade50.withOpacity(0.4),
+                        Colors.blue.shade900,
+                      ),
+                      const SizedBox(height: 8),
+
+                      // 2. Longitud
+                      _buildDataBox(
+                        'LONGITUD',
+                        _formatCoordinate(
+                          currentPoint.position.longitude,
+                          false,
+                        ),
+                        Colors.blue.shade50.withOpacity(0.4),
+                        Colors.blue.shade900,
+                      ),
+                      const SizedBox(height: 12),
+
+                      // 3. Fecha
+                      _buildInfoRow(
+                        Icons.calendar_today_outlined,
+                        'Fecha',
+                        _formatDate(currentPoint.timestamp!),
+                      ),
+                      // 4. Hora
+                      _buildInfoRow(
+                        Icons.access_time_outlined,
+                        'Hora local',
+                        _formatTime(currentPoint.timestamp!),
+                      ),
+
+                      const SizedBox(height: 8),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+
+                      // Speed/Course Compact at bottom
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Vel: ${currentPoint.speed?.toStringAsFixed(1) ?? "-"} kn',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                          Text(
+                            'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "-"}º',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey[700],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[50]!.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey[300]!),
+                        ),
+                        child: const Text(
+                          'Seleccione un punto',
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -705,236 +691,207 @@ class _MapScreenState extends ConsumerState<MapScreen>
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 800),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                    child: Card(
-                      elevation: 3,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(4),
+                child: FloatingMapCard(
+                  elevation: 3,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24.0,
+                    vertical: 16.0,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Main Slider
+                      // Main Slider
+                      Row(
+                        children: [
+                          // Controls Group
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                onPressed: _skipToStart,
+                                icon: const Icon(Icons.skip_previous), // Start
+                                color: Colors.grey[700],
+                                iconSize: 20,
+                                tooltip: 'Inicio',
+                              ),
+                              IconButton(
+                                onPressed: _stepBackward,
+                                icon: const Icon(Icons.navigate_before), // Prev
+                                color: Colors.grey[700],
+                                iconSize: 24,
+                                tooltip: 'Anterior',
+                              ),
+                              IconButton(
+                                onPressed: _togglePlay,
+                                icon: Icon(
+                                  _isPlaying
+                                      ? Icons.pause_circle_filled
+                                      : Icons.play_circle_filled,
+                                ),
+                                color: Colors.indigoAccent,
+                                iconSize: 36, // Larger
+                                tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
+                              ),
+                              IconButton(
+                                onPressed: () => _stepForward(),
+                                icon: const Icon(Icons.navigate_next), // Next
+                                color: Colors.grey[700],
+                                iconSize: 24,
+                                tooltip: 'Siguiente',
+                              ),
+                              IconButton(
+                                onPressed: _skipToEnd,
+                                icon: const Icon(Icons.skip_next), // End
+                                color: Colors.grey[700],
+                                iconSize: 20,
+                                tooltip: 'Fin',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _currentRangeValues != null
+                                ? SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      activeTrackColor: Colors.indigoAccent,
+                                      thumbColor: Colors.indigo,
+                                      overlayColor: Colors.indigo.withOpacity(
+                                        0.2,
+                                      ),
+                                      trackHeight: 4,
+                                      thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 8,
+                                      ),
+                                    ),
+                                    child: Slider(
+                                      value:
+                                          _currentSliderValue ??
+                                          _currentRangeValues!.start,
+                                      min: _currentRangeValues!.start,
+                                      max: _currentRangeValues!.end,
+                                      divisions:
+                                          (_currentRangeValues!.end -
+                                                  _currentRangeValues!.start) >
+                                              0
+                                          ? math.max(
+                                              1,
+                                              ((_currentRangeValues!.end -
+                                                          _currentRangeValues!
+                                                              .start) /
+                                                      60000)
+                                                  .round(),
+                                            )
+                                          : null,
+                                      label: _currentSliderValue != null
+                                          ? _formatDateTime(
+                                              DateTime.fromMillisecondsSinceEpoch(
+                                                _currentSliderValue!.toInt(),
+                                              ),
+                                            )
+                                          : null,
+                                      onChanged: (value) {
+                                        setState(() {
+                                          _currentSliderValue = value;
+                                        });
+                                        final selected = _selectedPoint;
+                                        if (selected != null) {
+                                          _updateMarkerTarget(
+                                            selected.position,
+                                            animate: true,
+                                          );
+                                          _ensureVisible(selected.position);
+                                        }
+                                      },
+                                    ),
+                                  )
+                                : const LinearProgressIndicator(value: 0),
+                          ),
+                        ],
                       ),
-                      color: Colors.white.withValues(alpha: 0.5),
-                      child: Padding(
+
+                      // Range Slider & Dates
+                      const SizedBox(height: 8),
+                      Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 24.0,
-                          vertical: 16.0,
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          // color: Colors.grey[50]!.withOpacity(0.5),
+                          color: Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            // Main Slider
-                            // Main Slider
                             Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // Controls Group
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      onPressed: _skipToStart,
-                                      icon: const Icon(
-                                        Icons.skip_previous,
-                                      ), // Start
-                                      color: Colors.grey[700],
-                                      iconSize: 20,
-                                      tooltip: 'Inicio',
-                                    ),
-                                    IconButton(
-                                      onPressed: _stepBackward,
-                                      icon: const Icon(
-                                        Icons.navigate_before,
-                                      ), // Prev
-                                      color: Colors.grey[700],
-                                      iconSize: 24,
-                                      tooltip: 'Anterior',
-                                    ),
-                                    IconButton(
-                                      onPressed: _togglePlay,
-                                      icon: Icon(
-                                        _isPlaying
-                                            ? Icons.pause_circle_filled
-                                            : Icons.play_circle_filled,
-                                      ),
-                                      color: Colors.indigoAccent,
-                                      iconSize: 36, // Larger
-                                      tooltip: _isPlaying
-                                          ? 'Pausar'
-                                          : 'Reproducir',
-                                    ),
-                                    IconButton(
-                                      onPressed: () => _stepForward(),
-                                      icon: const Icon(
-                                        Icons.navigate_next,
-                                      ), // Next
-                                      color: Colors.grey[700],
-                                      iconSize: 24,
-                                      tooltip: 'Siguiente',
-                                    ),
-                                    IconButton(
-                                      onPressed: _skipToEnd,
-                                      icon: const Icon(Icons.skip_next), // End
-                                      color: Colors.grey[700],
-                                      iconSize: 20,
-                                      tooltip: 'Fin',
-                                    ),
-                                  ],
+                                Text(
+                                  _minDate != null
+                                      ? _formatDateTime(_minDate!)
+                                      : '--/--/-- --:--',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: _currentRangeValues != null
-                                      ? SliderTheme(
-                                          data: SliderTheme.of(context)
-                                              .copyWith(
-                                                activeTrackColor:
-                                                    Colors.indigoAccent,
-                                                thumbColor: Colors.indigo,
-                                                overlayColor: Colors.indigo
-                                                    .withOpacity(0.2),
-                                                trackHeight: 4,
-                                                thumbShape:
-                                                    const RoundSliderThumbShape(
-                                                      enabledThumbRadius: 8,
-                                                    ),
-                                              ),
-                                          child: Slider(
-                                            value:
-                                                _currentSliderValue ??
-                                                _currentRangeValues!.start,
-                                            min: _currentRangeValues!.start,
-                                            max: _currentRangeValues!.end,
-                                            divisions:
-                                                (_currentRangeValues!.end -
-                                                        _currentRangeValues!
-                                                            .start) >
-                                                    0
-                                                ? math.max(
-                                                    1,
-                                                    ((_currentRangeValues!.end -
-                                                                _currentRangeValues!
-                                                                    .start) /
-                                                            60000)
-                                                        .round(),
-                                                  )
-                                                : null,
-                                            label: _currentSliderValue != null
-                                                ? _formatDateTime(
-                                                    DateTime.fromMillisecondsSinceEpoch(
-                                                      _currentSliderValue!
-                                                          .toInt(),
-                                                    ),
-                                                  )
-                                                : null,
-                                            onChanged: (value) {
-                                              setState(() {
-                                                _currentSliderValue = value;
-                                              });
-                                              final selected = _selectedPoint;
-                                              if (selected != null) {
-                                                _updateMarkerTarget(
-                                                  selected.position,
-                                                  animate: true,
-                                                );
-                                                _ensureVisible(
-                                                  selected.position,
-                                                );
-                                              }
-                                            },
-                                          ),
-                                        )
-                                      : const LinearProgressIndicator(value: 0),
+                                Text(
+                                  _maxDate != null
+                                      ? _formatDateTime(_maxDate!)
+                                      : '--/--/-- --:--',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[700],
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ],
                             ),
-
-                            // Range Slider & Dates
-                            const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                // color: Colors.grey[50]!.withOpacity(0.5),
-                                color: Colors.transparent,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Column(
-                                children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        _minDate != null
-                                            ? _formatDateTime(_minDate!)
-                                            : '--/--/-- --:--',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey[700],
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      Text(
-                                        _maxDate != null
-                                            ? _formatDateTime(_maxDate!)
-                                            : '--/--/-- --:--',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: Colors.grey[700],
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(
-                                    height: 30,
-                                    child: RangeSlider(
-                                      values:
-                                          _currentRangeValues ??
-                                          const RangeValues(0, 1),
-                                      min:
-                                          _minDate?.millisecondsSinceEpoch
-                                              .toDouble() ??
-                                          0,
-                                      max:
-                                          _maxDate?.millisecondsSinceEpoch
-                                              .toDouble() ??
-                                          1,
-                                      activeColor: Colors.grey[700],
-                                      inactiveColor: Colors.black12,
-                                      onChanged:
-                                          (_minDate != null &&
-                                              _maxDate != null &&
-                                              _minDate != _maxDate)
-                                          ? (RangeValues values) {
-                                              setState(() {
-                                                _currentRangeValues = values;
-                                                if (_currentSliderValue !=
-                                                    null) {
-                                                  if (_currentSliderValue! <
-                                                      values.start) {
-                                                    _currentSliderValue =
-                                                        values.start;
-                                                  } else if (_currentSliderValue! >
-                                                      values.end) {
-                                                    _currentSliderValue =
-                                                        values.end;
-                                                  }
-                                                }
-                                                _filterPoints();
-                                              });
+                            SizedBox(
+                              height: 30,
+                              child: RangeSlider(
+                                values:
+                                    _currentRangeValues ??
+                                    const RangeValues(0, 1),
+                                min:
+                                    _minDate?.millisecondsSinceEpoch
+                                        .toDouble() ??
+                                    0,
+                                max:
+                                    _maxDate?.millisecondsSinceEpoch
+                                        .toDouble() ??
+                                    1,
+                                activeColor: Colors.grey[700],
+                                inactiveColor: Colors.black12,
+                                onChanged:
+                                    (_minDate != null &&
+                                        _maxDate != null &&
+                                        _minDate != _maxDate)
+                                    ? (RangeValues values) {
+                                        setState(() {
+                                          _currentRangeValues = values;
+                                          if (_currentSliderValue != null) {
+                                            if (_currentSliderValue! <
+                                                values.start) {
+                                              _currentSliderValue =
+                                                  values.start;
+                                            } else if (_currentSliderValue! >
+                                                values.end) {
+                                              _currentSliderValue = values.end;
                                             }
-                                          : null,
-                                    ),
-                                  ),
-                                ],
+                                          }
+                                          _filterPoints();
+                                        });
+                                      }
+                                    : null,
                               ),
                             ),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
