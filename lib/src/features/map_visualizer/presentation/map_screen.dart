@@ -124,7 +124,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         : null;
     final mapCenter = points.isNotEmpty
         ? points[points.length ~/ 2].position
-        : const LatLng(40.416775, -3.703790);
+        : const LatLng(-38.0055, -57.5426); // Mar del Plata
     final fallbackZoom = points.isNotEmpty ? 6.0 : 5.0;
 
     _scheduleViewAdjustment(trackBounds, mapCenter, fallbackZoom);
@@ -209,7 +209,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isLoading = excelDataState.isLoading;
     final mapCenter = _filteredPoints.isNotEmpty
         ? _filteredPoints[_filteredPoints.length ~/ 2].position
-        : const LatLng(40.416775, -3.703790);
+        : const LatLng(-38.0055, -57.5426); // Mar del Plata
 
     final positionMarkers = _filteredPoints
         .map(
@@ -218,20 +218,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             height: 8,
             point: point.position,
             child: Tooltip(
-              message:
-                  'Fecha: ${point.timestamp != null ? _formatDate(point.timestamp!) : "N/A"}\n'
-                  'Hora: ${point.timestamp != null ? _formatTime(point.timestamp!) : "N/A"}\n'
-                  'Lat: ${_formatCoordinate(point.position.latitude, true)}\n'
-                  'Lon: ${_formatCoordinate(point.position.longitude, false)}\n'
-                  'Vel: ${point.speed?.toStringAsFixed(1) ?? "0.0"} kn\n'
-                  'Rumbo: ${point.course?.toStringAsFixed(0) ?? "0"}º',
+              message: _getTooltipMessage(point),
               waitDuration: Duration.zero,
               padding: const EdgeInsets.all(8.0),
               showDuration: Duration
                   .zero, // Hide immediately on exit if needed, though standard behavior is usually fine.
               child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.blueAccent,
+                decoration: BoxDecoration(
+                  color: Colors.blueAccent.withValues(alpha: 0.7),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -362,35 +356,38 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                             ),
                           MarkerLayer(
                             markers: [
+                              ...positionMarkers,
                               if (currentPoint != null)
                                 Marker(
-                                  width: 20,
-                                  height: 20,
+                                  width: 30, // Increased size for visibility
+                                  height: 30,
                                   point: currentPoint.position,
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: Colors.redAccent,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 2,
+                                  child: Tooltip(
+                                    message: _getTooltipMessage(currentPoint),
+                                    waitDuration: Duration.zero,
+                                    padding: const EdgeInsets.all(8.0),
+                                    showDuration: Duration.zero,
+                                    child: AnimatedRotation(
+                                      turns: (currentPoint.course ?? 0) / 360,
+                                      duration: const Duration(
+                                        milliseconds: 250,
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.3),
-                                          blurRadius: 4,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    child: const Icon(
-                                      Icons.circle,
-                                      color: Colors.white,
-                                      size: 10,
+                                      curve: Curves.easeInOut,
+                                      child: const Icon(
+                                        Icons.navigation,
+                                        color: Colors.redAccent,
+                                        size: 24,
+                                        shadows: [
+                                          Shadow(
+                                            blurRadius: 4,
+                                            color: Colors.black54,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ...positionMarkers,
                             ],
                           ),
                         ],
@@ -607,6 +604,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         previous.southWest.longitude == current.southWest.longitude &&
         previous.northEast.latitude == current.northEast.latitude &&
         previous.northEast.longitude == current.northEast.longitude;
+  }
+
+  String _getTooltipMessage(MapPoint point) {
+    return 'Fecha: ${point.timestamp != null ? _formatDate(point.timestamp!) : "N/A"}\n'
+        'Hora: ${point.timestamp != null ? _formatTime(point.timestamp!) : "N/A"}\n'
+        'Lat: ${_formatCoordinate(point.position.latitude, true)}\n'
+        'Lon: ${_formatCoordinate(point.position.longitude, false)}\n'
+        'Vel: ${point.speed?.toStringAsFixed(1) ?? "0.0"} kn\n'
+        'Rumbo: ${point.course?.toStringAsFixed(0) ?? "0"}º';
   }
 
   void _ensureVisible(LatLng point) {
