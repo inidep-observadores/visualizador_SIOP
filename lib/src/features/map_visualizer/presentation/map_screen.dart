@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'dart:math' as math;
 
@@ -54,6 +55,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   LatLng? _markerStartPos;
   LatLng? _markerEndPos;
 
+  // Playback
+  bool _isPlaying = false;
+  Timer? _playbackTimer;
+
   @override
   void initState() {
     super.initState();
@@ -84,7 +89,119 @@ class _MapScreenState extends ConsumerState<MapScreen>
   @override
   void dispose() {
     _markerAnimController.dispose();
+    _playbackTimer?.cancel();
     super.dispose();
+  }
+
+  void _togglePlay() {
+    setState(() {
+      _isPlaying = !_isPlaying;
+    });
+    if (_isPlaying) {
+      _startPlayback();
+    } else {
+      _stopPlayback();
+    }
+  }
+
+  void _startPlayback() {
+    _playbackTimer?.cancel();
+    _playbackTimer = Timer.periodic(const Duration(milliseconds: 500), (timer) {
+      _stepForward(loop: true);
+    });
+  }
+
+  void _stopPlayback() {
+    _playbackTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _isPlaying = false;
+      });
+    }
+  }
+
+  void _stepForward({bool loop = false}) {
+    if (_currentSliderValue == null || _currentRangeValues == null) return;
+
+    // Avanzar ~1 minuto o al siguiente punto
+    // Mejor usar un paso fijo basado en la densidad de datos o tiempo?
+    // Por ahora usemos un paso relativo al slider visual = 60000ms (1 min) si es gran escala, o algun delta.
+    // O mejor: Next available point timestamp.
+
+    double nextVal = _currentSliderValue! + 60000; // +1 min default
+    // Find precise next point if available
+    final nextPoint = _allPoints.firstWhere(
+      (p) =>
+          p.timestamp != null &&
+          p.timestamp!.millisecondsSinceEpoch > _currentSliderValue!,
+      orElse: () => MapPoint(position: const LatLng(0, 0)), // Dummy
+    );
+
+    if (nextPoint.timestamp != null) {
+      // Si el siguiente punto está muy lejos (ej > 1 hora), saltamos a él?
+      // Para visualización fluida mejor saltar al siguiente punto real.
+      nextVal = nextPoint.timestamp!.millisecondsSinceEpoch.toDouble();
+    }
+
+    if (nextVal >= _currentRangeValues!.end) {
+      nextVal = _currentRangeValues!.end;
+      if (loop) _stopPlayback();
+    }
+
+    setState(() {
+      _currentSliderValue = nextVal;
+    });
+    _updateSelectedPoint();
+  }
+
+  void _stepBackward() {
+    if (_currentSliderValue == null || _currentRangeValues == null) return;
+
+    // Previous available point
+    final prevPoint = _allPoints.lastWhere(
+      (p) =>
+          p.timestamp != null &&
+          p.timestamp!.millisecondsSinceEpoch < _currentSliderValue!,
+      orElse: () => MapPoint(position: const LatLng(0, 0)),
+    );
+
+    double prevVal = _currentSliderValue! - 60000;
+    if (prevPoint.timestamp != null) {
+      prevVal = prevPoint.timestamp!.millisecondsSinceEpoch.toDouble();
+    }
+
+    if (prevVal <= _currentRangeValues!.start) {
+      prevVal = _currentRangeValues!.start;
+    }
+
+    setState(() {
+      _currentSliderValue = prevVal;
+    });
+    _updateSelectedPoint();
+  }
+
+  void _skipToStart() {
+    if (_currentRangeValues == null) return;
+    setState(() {
+      _currentSliderValue = _currentRangeValues!.start;
+    });
+    _updateSelectedPoint();
+  }
+
+  void _skipToEnd() {
+    if (_currentRangeValues == null) return;
+    setState(() {
+      _currentSliderValue = _currentRangeValues!.end;
+    });
+    _updateSelectedPoint();
+  }
+
+  void _updateSelectedPoint() {
+    final selected = _selectedPoint;
+    if (selected != null) {
+      _updateMarkerTarget(selected.position, animate: true);
+      _ensureVisible(selected.position);
+    }
   }
 
   void _updateMarkerTarget(LatLng newTarget, {bool animate = true}) {
@@ -284,21 +401,34 @@ class _MapScreenState extends ConsumerState<MapScreen>
             width: 8,
             height: 8,
             point: point.position,
-            child: Tooltip(
-              message: _getTooltipMessage(point),
-              waitDuration: Duration.zero,
-              padding: const EdgeInsets.all(8.0),
-              showDuration: Duration.zero,
-              decoration: BoxDecoration(
-                color: Colors.black87,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              textStyle: const TextStyle(color: Colors.white, fontSize: 12),
-              child: Container(
+            child: GestureDetector(
+              onTap: () {
+                if (point.timestamp != null) {
+                  setState(() {
+                    _currentSliderValue = point
+                        .timestamp!
+                        .millisecondsSinceEpoch
+                        .toDouble();
+                  });
+                  _updateSelectedPoint();
+                }
+              },
+              child: Tooltip(
+                message: _getTooltipMessage(point),
+                waitDuration: Duration.zero,
+                padding: const EdgeInsets.all(8.0),
+                showDuration: Duration.zero,
                 decoration: BoxDecoration(
-                  color: Colors.blueAccent.withOpacity(0.6),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 1),
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withOpacity(0.6),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1),
+                  ),
                 ),
               ),
             ),
@@ -382,7 +512,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             top: 24,
             left: 24,
             child: SizedBox(
-              width: 220, // Reduced width
+              width: 190, // Reduced width
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4),
                 child: BackdropFilter(
@@ -396,7 +526,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           // Header con carga de archivo
@@ -431,7 +561,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                     Text(
                                       matricula == 'N/A'
                                           ? ''
-                                          : trimMatricula(matricula),
+                                          : 'Mat. ${trimMatricula(matricula)}',
                                       style: TextStyle(
                                         fontSize: 11,
                                         color: Colors.grey[800],
@@ -558,19 +688,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               ),
                             ),
                           ],
-                          const SizedBox(height: 12),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              Text(
-                                '${_filteredPoints.length} pts',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: Colors.grey[600],
-                                ),
-                              ),
-                            ],
-                          ),
                         ],
                       ),
                     ),
@@ -607,15 +724,61 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             // Main Slider
+                            // Main Slider
                             Row(
                               children: [
-                                IconButton(
-                                  onPressed: () {
-                                    // TODO: Implement play/pause
-                                  },
-                                  icon: const Icon(Icons.play_circle_fill),
-                                  color: Colors.indigoAccent,
-                                  iconSize: 32,
+                                // Controls Group
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      onPressed: _skipToStart,
+                                      icon: const Icon(
+                                        Icons.skip_previous,
+                                      ), // Start
+                                      color: Colors.grey[700],
+                                      iconSize: 20,
+                                      tooltip: 'Inicio',
+                                    ),
+                                    IconButton(
+                                      onPressed: _stepBackward,
+                                      icon: const Icon(
+                                        Icons.navigate_before,
+                                      ), // Prev
+                                      color: Colors.grey[700],
+                                      iconSize: 24,
+                                      tooltip: 'Anterior',
+                                    ),
+                                    IconButton(
+                                      onPressed: _togglePlay,
+                                      icon: Icon(
+                                        _isPlaying
+                                            ? Icons.pause_circle_filled
+                                            : Icons.play_circle_filled,
+                                      ),
+                                      color: Colors.indigoAccent,
+                                      iconSize: 36, // Larger
+                                      tooltip: _isPlaying
+                                          ? 'Pausar'
+                                          : 'Reproducir',
+                                    ),
+                                    IconButton(
+                                      onPressed: () => _stepForward(),
+                                      icon: const Icon(
+                                        Icons.navigate_next,
+                                      ), // Next
+                                      color: Colors.grey[700],
+                                      iconSize: 24,
+                                      tooltip: 'Siguiente',
+                                    ),
+                                    IconButton(
+                                      onPressed: _skipToEnd,
+                                      icon: const Icon(Icons.skip_next), // End
+                                      color: Colors.grey[700],
+                                      iconSize: 20,
+                                      tooltip: 'Fin',
+                                    ),
+                                  ],
                                 ),
                                 const SizedBox(width: 8),
                                 Expanded(
