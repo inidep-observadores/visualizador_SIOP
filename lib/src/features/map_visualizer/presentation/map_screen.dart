@@ -12,6 +12,7 @@ import 'package:siop_data_visualizer/src/features/map_visualizer/application/geo
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/loading_dialog.dart';
 
 class MapPoint {
   final LatLng position;
@@ -295,7 +296,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['xls', 'xlsx', 'csv'],
+        allowedExtensions: ['xlsx', 'csv'],
       );
 
       if (result != null && result.files.single.path != null) {
@@ -569,6 +570,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     ) {
       next.when(
         data: (data) {
+          LoadingDialog.hide(context);
           if (data != null) {
             _processData(data);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -581,6 +583,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           }
         },
         error: (error, stackTrace) {
+          LoadingDialog.hide(context);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Error al procesar el archivo: $error'),
@@ -589,7 +592,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
             ),
           );
         },
-        loading: () {},
+        loading: () {
+          LoadingDialog.show(context);
+        },
       );
     });
 
@@ -814,18 +819,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           backgroundColor: Colors.white.withValues(alpha: 0.5),
                           foregroundColor: Colors.indigoAccent,
                           tooltip: 'Cargar archivo de datos',
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 12,
-                                  height: 12,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.upload_file_outlined,
-                                  size: 18,
-                                ),
+                          child: const Icon(
+                            Icons.upload_file_outlined,
+                            size: 18,
+                          ),
                         ),
                       ],
                     ),
