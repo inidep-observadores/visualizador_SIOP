@@ -11,6 +11,7 @@ import 'package:siop_data_visualizer/src/features/map_visualizer/application/pro
 import 'package:siop_data_visualizer/src/features/map_visualizer/application/geojson_service.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
 
 class MapPoint {
   final LatLng position;
@@ -36,14 +37,13 @@ class _Trip {
   final List<LatLng> pathPoints;
 
   Color color;
-  bool isVisible;
+  bool isVisible = false;
 
   _Trip({
     required this.startPoint,
     required this.endPoint,
     required this.pathPoints,
     this.color = Colors.blue,
-    this.isVisible = false,
   });
 
   DateTime get startTime => startPoint.timestamp!;
@@ -465,7 +465,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
         return pMs >= startMs && pMs <= endMs;
       }).toList();
     }
+
+    // Capture currently visible trips using their start time as a key (assuming unique per trip)
+    final visibleTripStartTimes = _detectedTrips
+        .where((t) => t.isVisible)
+        .map((t) => t.startTime.millisecondsSinceEpoch)
+        .toSet();
+
     _detectedTrips = _detectTrips(_filteredPoints);
+
+    // Restore visibility state
+    for (final trip in _detectedTrips) {
+      if (visibleTripStartTimes.contains(
+        trip.startTime.millisecondsSinceEpoch,
+      )) {
+        trip.isVisible = true;
+      }
+    }
   }
 
   // Helper to find the "selected" point based on current slider value
@@ -1101,7 +1117,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                       const RoundRangeSliderThumbShape(
                                         enabledThumbRadius: 4,
                                       ),
-                                  overlayColor: Colors.indigo.withOpacity(0.2),
+                                  overlayColor: Colors.indigo.withValues(
+                                    alpha: 0.2,
+                                  ),
                                   valueIndicatorColor: Colors.indigo,
                                   valueIndicatorTextStyle: const TextStyle(
                                     color: Colors.white,
@@ -1386,6 +1404,19 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 ),
               ),
             ),
+          Positioned(
+            bottom: 24,
+            right: 80, // Left of zoom buttons
+            child: ScaleBar(
+              mapController: _mapController,
+              textStyle: TextStyle(
+                fontSize: 10,
+                color: Colors.grey[800],
+                fontWeight: FontWeight.bold,
+              ),
+              lineColor: Colors.grey[800]!,
+            ),
+          ),
           Positioned(
             bottom: 24,
             right: 24,
