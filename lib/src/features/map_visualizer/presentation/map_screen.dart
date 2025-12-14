@@ -521,6 +521,15 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 pendingDepartureIndex,
                 endIndex + 1,
               );
+
+              if (pendingDepartureIndex > 0) {
+                tripPoints.insert(0, points[pendingDepartureIndex - 1]);
+              }
+
+              if (endIndex < points.length - 1) {
+                tripPoints.add(points[endIndex + 1]);
+              }
+
               final pathPoints = tripPoints.map((p) => p.position).toList();
 
               final trip = _Trip(
