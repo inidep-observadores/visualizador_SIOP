@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.danielditullio" "\0"
-            VALUE "FileDescription", "siop_data_visualizer" "\0"
+            VALUE "FileDescription", "visualizador_siop" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "siop_data_visualizer" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2025 com.danielditullio. All rights reserved." "\0"
-            VALUE "OriginalFilename", "siop_data_visualizer.exe" "\0"
-            VALUE "ProductName", "siop_data_visualizer" "\0"
+            VALUE "InternalName", "visualizador_siop" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2025 com.example. All rights reserved." "\0"
+            VALUE "OriginalFilename", "visualizador_siop.exe" "\0"
+            VALUE "ProductName", "visualizador_siop" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
