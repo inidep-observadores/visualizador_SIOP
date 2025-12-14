@@ -98,6 +98,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
   bool _isPlaying = false;
   Timer? _playbackTimer;
 
+  // Cursor Position
+  LatLng? _cursorPosition;
+
   // Layer Visibility State
   bool _showPoints = false;
   bool _showTrack = false;
@@ -925,141 +928,212 @@ class _MapScreenState extends ConsumerState<MapScreen>
         children: [
           // 1. Layer del Mapa (Fondo completo)
           Positioned.fill(
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(
-                initialCenter: mapCenter,
-                initialZoom: _filteredPoints.isNotEmpty ? 6.0 : 5.0,
-              ),
-              children: [
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName:
-                      'com.danielditullio.visualizador_siop',
+            child: MouseRegion(
+              onHover: (event) {
+                final point = math.Point(
+                  event.localPosition.dx,
+                  event.localPosition.dy,
+                );
+                try {
+                  final latLng = _mapController.camera.pointToLatLng(point);
+                  setState(() {
+                    _cursorPosition = latLng;
+                  });
+                } catch (e) {
+                  // Ignore conversion errors (e.g. if map not ready)
+                }
+              },
+              hitTestBehavior: HitTestBehavior.translucent,
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: mapCenter,
+                  initialZoom: _filteredPoints.isNotEmpty ? 6.0 : 5.0,
                 ),
-
-                // GeoJSON Layers (Below tracks)
-                if (geoJsonAsync.value != null) ...[
-                  PolygonLayer(
-                    polygons: [
-                      ...geoJsonAsync.value!.otherPolygons,
-                      if (_showCentolla)
-                        ...geoJsonAsync.value!.centollaPolygons,
-                      if (_showVieira) ...geoJsonAsync.value!.vieiraPolygons,
-                    ],
-                  ),
-                  PolylineLayer(
-                    polylines: [
-                      ...geoJsonAsync.value!.otherPolylines,
-                      if (_showCentolla)
-                        ...geoJsonAsync.value!.centollaPolylines,
-                      if (_showVieira) ...geoJsonAsync.value!.vieiraPolylines,
-                    ],
-                  ),
-                ],
-
-                if (_filteredPoints.length > 1 && _showTrack)
-                  PolylineLayer(
-                    polylines: [
-                      Polyline(
-                        points: _filteredPoints.map((p) => p.position).toList(),
-                        color: Colors.teal.withValues(alpha: 0.8),
-                        strokeWidth: 1.0,
-                      ),
-                    ],
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName:
+                        'com.danielditullio.visualizador_siop',
                   ),
 
-                if (_detectedTrips.any((t) => t.isVisible))
-                  PolylineLayer(
-                    polylines: [
+                  // GeoJSON Layers (Below tracks)
+                  if (geoJsonAsync.value != null) ...[
+                    PolygonLayer(
+                      polygons: [
+                        ...geoJsonAsync.value!.otherPolygons,
+                        if (_showCentolla)
+                          ...geoJsonAsync.value!.centollaPolygons,
+                        if (_showVieira) ...geoJsonAsync.value!.vieiraPolygons,
+                      ],
+                    ),
+                    PolylineLayer(
+                      polylines: [
+                        ...geoJsonAsync.value!.otherPolylines,
+                        if (_showCentolla)
+                          ...geoJsonAsync.value!.centollaPolylines,
+                        if (_showVieira) ...geoJsonAsync.value!.vieiraPolylines,
+                      ],
+                    ),
+                  ],
+
+                  if (_filteredPoints.length > 1 && _showTrack)
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _filteredPoints
+                              .map((p) => p.position)
+                              .toList(),
+                          color: Colors.teal.withValues(alpha: 0.8),
+                          strokeWidth: 1.0,
+                        ),
+                      ],
+                    ),
+
+                  if (_detectedTrips.any((t) => t.isVisible))
+                    PolylineLayer(
+                      polylines: [
+                        for (final trip in _detectedTrips)
+                          if (trip.isVisible)
+                            Polyline(
+                              points: trip.pathPoints,
+                              color: trip.color,
+                              strokeWidth: 1.5,
+                            ),
+                      ],
+                    ),
+
+                  // Trip Points Layer
+                  MarkerLayer(
+                    markers: [
                       for (final trip in _detectedTrips)
-                        if (trip.isVisible)
-                          Polyline(
-                            points: trip.pathPoints,
-                            color: trip.color,
-                            strokeWidth: 1.5,
-                          ),
-                    ],
-                  ),
-
-                // Trip Points Layer
-                MarkerLayer(
-                  markers: [
-                    for (final trip in _detectedTrips)
-                      if (trip.arePointsVisible)
-                        for (final point in trip.tripPoints)
-                          Marker(
-                            point: point.position,
-                            width: 6,
-                            height: 6,
-                            child: Tooltip(
-                              message: _getTooltipMessage(point),
-                              waitDuration: Duration.zero,
-                              padding: const EdgeInsets.all(8.0),
-                              showDuration: Duration.zero,
-                              decoration: BoxDecoration(
-                                color: Colors.black87,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: GestureDetector(
-                                onTap: () {
-                                  if (point.timestamp != null) {
-                                    _updateSliderAndMarker(
-                                      point.timestamp!.millisecondsSinceEpoch
-                                          .toDouble(),
-                                    );
-                                  }
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: trip.color,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: Colors.white,
-                                      width: 1,
+                        if (trip.arePointsVisible)
+                          for (final point in trip.tripPoints)
+                            Marker(
+                              point: point.position,
+                              width: 6,
+                              height: 6,
+                              child: Tooltip(
+                                message: _getTooltipMessage(point),
+                                waitDuration: Duration.zero,
+                                padding: const EdgeInsets.all(8.0),
+                                showDuration: Duration.zero,
+                                decoration: BoxDecoration(
+                                  color: Colors.black87,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: GestureDetector(
+                                  onTap: () {
+                                    if (point.timestamp != null) {
+                                      _updateSliderAndMarker(
+                                        point.timestamp!.millisecondsSinceEpoch
+                                            .toDouble(),
+                                      );
+                                    }
+                                  },
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: trip.color,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 1,
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                  ],
-                ),
+                    ],
+                  ),
 
-                MarkerLayer(
-                  markers: [
-                    if (_showPoints) ...positionMarkers,
-                    if (currentPoint != null)
-                      Marker(
-                        width: 40,
-                        height: 40,
-                        point: _animatedMarkerPosition ?? currentPoint.position,
-                        child: Tooltip(
-                          message: _getTooltipMessage(currentPoint),
-                          waitDuration: Duration.zero,
-                          padding: const EdgeInsets.all(8.0),
-                          showDuration: Duration.zero,
-                          decoration: BoxDecoration(
-                            color: Colors.black87,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: AnimatedRotation(
-                            turns: (currentPoint.course ?? 0) / 360,
-                            duration: const Duration(milliseconds: 250),
-                            curve: Curves.easeInOut,
-                            child: const Icon(
-                              Icons.navigation,
-                              color: Colors.indigoAccent,
-                              size: 40,
+                  MarkerLayer(
+                    markers: [
+                      if (_showPoints) ...positionMarkers,
+                      if (currentPoint != null)
+                        Marker(
+                          width: 40,
+                          height: 40,
+                          point:
+                              _animatedMarkerPosition ?? currentPoint.position,
+                          child: Tooltip(
+                            message: _getTooltipMessage(currentPoint),
+                            waitDuration: Duration.zero,
+                            padding: const EdgeInsets.all(8.0),
+                            showDuration: Duration.zero,
+                            decoration: BoxDecoration(
+                              color: Colors.black87,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: AnimatedRotation(
+                              turns: (currentPoint.course ?? 0) / 360,
+                              duration: const Duration(milliseconds: 250),
+                              curve: Curves.easeInOut,
+                              child: const Icon(
+                                Icons.navigation,
+                                color: Colors.indigoAccent,
+                                size: 40,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
+
+          // Cursor Coordinates Display (Bottom Left)
+          if (_cursorPosition != null)
+            Positioned(
+              bottom: 24,
+              left: 24,
+              child: IgnorePointer(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatCoordinate(_cursorPosition!.latitude, true),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                          color: Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _formatCoordinate(_cursorPosition!.longitude, false),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          fontFeatures: [FontFeature.tabularFigures()],
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
           // 2. Tarjeta Flotante de Información (Top Left)
           Positioned(
@@ -1707,6 +1781,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                                         .millisecondsSinceEpoch
                                                         .toDouble(),
                                                   );
+                                                  _animatedMapMove(
+                                                    trip.startPoint.position,
+                                                    _mapController.camera.zoom,
+                                                  );
                                                 },
                                                 child: Text(
                                                   'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
@@ -1722,6 +1800,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                                         .endTime
                                                         .millisecondsSinceEpoch
                                                         .toDouble(),
+                                                  );
+                                                  _animatedMapMove(
+                                                    trip.endPoint.position,
+                                                    _mapController.camera.zoom,
                                                   );
                                                 },
                                                 child: Text(
@@ -2073,14 +2155,28 @@ class _MapScreenState extends ConsumerState<MapScreen>
     double fallbackZoom,
   ) {
     if (_boundsMatch(_lastFittedBounds, bounds)) return;
-    final targetCenter = bounds != null
-        ? _centerForBounds(bounds)
-        : fallbackCenter;
-    final targetZoom = bounds != null ? _zoomForBounds(bounds) : fallbackZoom;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _animatedMapMove(targetCenter, targetZoom);
+      if (bounds != null) {
+        try {
+          _mapController.fitCamera(
+            CameraFit.bounds(
+              bounds: bounds,
+              padding: const EdgeInsets.all(60.0),
+            ),
+          );
+        } catch (e) {
+          debugPrint('Error fitting camera: $e');
+          final targetCenter = _centerForBounds(bounds);
+          final targetZoom = _zoomForBounds(bounds);
+          _animatedMapMove(targetCenter, targetZoom);
+        }
+      } else {
+        _animatedMapMove(fallbackCenter, fallbackZoom);
+      }
     });
+
     _lastFittedBounds = bounds;
   }
 
