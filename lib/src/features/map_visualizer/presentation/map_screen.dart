@@ -37,14 +37,17 @@ class _Trip {
   final MapPoint startPoint;
   final MapPoint endPoint;
   final List<LatLng> pathPoints;
+  final List<MapPoint> tripPoints;
 
   Color color;
-  bool isVisible = false;
+  bool isVisible = true;
+  bool arePointsVisible = false;
 
   _Trip({
     required this.startPoint,
     required this.endPoint,
     required this.pathPoints,
+    required this.tripPoints,
     this.color = Colors.blue,
   });
 
@@ -96,8 +99,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Timer? _playbackTimer;
 
   // Layer Visibility State
-  bool _showPoints = true;
-  bool _showTrack = true;
+  bool _showPoints = false;
+  bool _showTrack = false;
   bool _showCentolla = false;
   bool _showVieira = false;
 
@@ -503,15 +506,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
             // We need to ensure valid sublist ranges
 
             if (endIndex > pendingDepartureIndex) {
-              final pathPoints = points
-                  .sublist(pendingDepartureIndex, endIndex + 1)
-                  .map((p) => p.position)
-                  .toList();
+              final tripPoints = points.sublist(
+                pendingDepartureIndex,
+                endIndex + 1,
+              );
+              final pathPoints = tripPoints.map((p) => p.position).toList();
 
               final trip = _Trip(
                 startPoint: startPoint,
                 endPoint: endPoint,
                 pathPoints: pathPoints,
+                tripPoints: tripPoints,
                 color: _tripColors[colorIndex],
               );
               trips.add(trip);
@@ -572,15 +577,17 @@ class _MapScreenState extends ConsumerState<MapScreen>
         if (pendingDepartureIndex != null) {
           final colorIndex = trips.length % _tripColors.length;
           final endIndex = i + 3;
-          final pathPoints = points
-              .sublist(pendingDepartureIndex, endIndex + 1)
-              .map((p) => p.position)
-              .toList();
+          final tripPoints = points.sublist(
+            pendingDepartureIndex,
+            endIndex + 1,
+          );
+          final pathPoints = tripPoints.map((p) => p.position).toList();
 
           final trip = _Trip(
             startPoint: points[pendingDepartureIndex],
             endPoint: points[endIndex],
             pathPoints: pathPoints,
+            tripPoints: tripPoints,
             color: _tripColors[colorIndex],
           );
           trips.add(trip);
@@ -605,20 +612,27 @@ class _MapScreenState extends ConsumerState<MapScreen>
       }).toList();
     }
 
-    // Capture currently visible trips using their start time as a key (assuming unique per trip)
-    final visibleTripStartTimes = _detectedTrips
-        .where((t) => t.isVisible)
+    // Capture state to preserve across re-detection
+    final hiddenTripStartTimes = _detectedTrips
+        .where((t) => !t.isVisible)
+        .map((t) => t.startTime.millisecondsSinceEpoch)
+        .toSet();
+
+    final pointsVisibleTripStartTimes = _detectedTrips
+        .where((t) => t.arePointsVisible)
         .map((t) => t.startTime.millisecondsSinceEpoch)
         .toSet();
 
     _detectedTrips = _detectTrips(_filteredPoints);
 
-    // Restore visibility state
+    // Restore state
     for (final trip in _detectedTrips) {
-      if (visibleTripStartTimes.contains(
-        trip.startTime.millisecondsSinceEpoch,
-      )) {
-        trip.isVisible = true;
+      final startMs = trip.startTime.millisecondsSinceEpoch;
+      if (hiddenTripStartTimes.contains(startMs)) {
+        trip.isVisible = false;
+      }
+      if (pointsVisibleTripStartTimes.contains(startMs)) {
+        trip.arePointsVisible = true;
       }
     }
   }
@@ -649,21 +663,24 @@ class _MapScreenState extends ConsumerState<MapScreen>
     bool value,
     ValueChanged<bool> onChanged,
   ) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12)),
-        Transform.scale(
-          scale: 0.6,
-          alignment: Alignment.centerRight,
-          child: Switch(
-            value: value,
-            onChanged: onChanged,
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            // visualDensity: VisualDensity.compact, // Not available in Switch
+    return Tooltip(
+      message: value ? 'Ocultar $label' : 'Mostrar $label',
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12)),
+          Transform.scale(
+            scale: 0.6,
+            alignment: Alignment.centerRight,
+            child: Switch(
+              value: value,
+              onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              // visualDensity: VisualDensity.compact, // Not available in Switch
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -835,6 +852,50 @@ class _MapScreenState extends ConsumerState<MapScreen>
                     ],
                   ),
 
+                // Trip Points Layer
+                MarkerLayer(
+                  markers: [
+                    for (final trip in _detectedTrips)
+                      if (trip.arePointsVisible)
+                        for (final point in trip.tripPoints)
+                          Marker(
+                            point: point.position,
+                            width: 6,
+                            height: 6,
+                            child: Tooltip(
+                              message: _getTooltipMessage(point),
+                              waitDuration: Duration.zero,
+                              padding: const EdgeInsets.all(8.0),
+                              showDuration: Duration.zero,
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: GestureDetector(
+                                onTap: () {
+                                  if (point.timestamp != null) {
+                                    _updateSliderAndMarker(
+                                      point.timestamp!.millisecondsSinceEpoch
+                                          .toDouble(),
+                                    );
+                                  }
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: trip.color,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                  ],
+                ),
+
                 MarkerLayer(
                   markers: [
                     if (_showPoints) ...positionMarkers,
@@ -875,7 +936,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
             top: 24,
             left: 24,
             child: SizedBox(
-              width: 190, // Reduced width
+              width: 200, // Reduced width
 
               child: FloatingMapCard(
                 elevation: 2,
@@ -1051,23 +1112,23 @@ class _MapScreenState extends ConsumerState<MapScreen>
                       ),
                     ),
                     _buildCompactSwitch(
-                      'Puntos',
+                      'Puntos totales',
                       _showPoints,
                       (val) => setState(() => _showPoints = val),
                     ),
                     _buildCompactSwitch(
-                      'Trayectoria',
+                      'Trayectoria total',
                       _showTrack,
                       (val) => setState(() => _showTrack = val),
                     ),
                     const SizedBox(height: 8),
                     _buildCompactSwitch(
-                      'Vieira',
+                      ' Áreas de Vieira',
                       _showVieira,
                       (val) => setState(() => _showVieira = val),
                     ),
                     _buildCompactSwitch(
-                      'Centolla',
+                      'Áreas de Centolla',
                       _showCentolla,
                       (val) => setState(() => _showCentolla = val),
                     ),
@@ -1546,20 +1607,57 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                         Positioned(
                                           bottom: 0,
                                           right: 0,
-                                          child: InkWell(
-                                            onTap: () {
-                                              setState(() {
-                                                trip.isVisible =
-                                                    !trip.isVisible;
-                                              });
-                                            },
-                                            child: Icon(
-                                              trip.isVisible
-                                                  ? Icons.visibility
-                                                  : Icons.visibility_off,
-                                              size: 20,
-                                              color: trip.color,
-                                            ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              InkWell(
+                                                onTap: () {
+                                                  setState(() {
+                                                    trip.isVisible =
+                                                        !trip.isVisible;
+                                                  });
+                                                },
+                                                child: Tooltip(
+                                                  message: trip.isVisible
+                                                      ? 'Ocultar trayectoria de esta etapa'
+                                                      : 'Mostrar trayectoria de esta etapa',
+                                                  child: Icon(
+                                                    Icons.timeline,
+                                                    size: 20,
+                                                    color: trip.color
+                                                        .withValues(
+                                                          alpha: trip.isVisible
+                                                              ? 1.0
+                                                              : 0.3,
+                                                        ),
+                                                  ),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              InkWell(
+                                                onTap: () {
+                                                  setState(() {
+                                                    trip.arePointsVisible =
+                                                        !trip.arePointsVisible;
+                                                  });
+                                                },
+                                                child: Tooltip(
+                                                  message: trip.arePointsVisible
+                                                      ? 'Ocultar puntos de esta etapa'
+                                                      : 'Mostrar puntos de esta etapa',
+                                                  child: Icon(
+                                                    Icons.scatter_plot,
+                                                    size: 20,
+                                                    color: trip.color.withValues(
+                                                      alpha:
+                                                          trip.arePointsVisible
+                                                          ? 1.0
+                                                          : 0.3,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
                                       ],
