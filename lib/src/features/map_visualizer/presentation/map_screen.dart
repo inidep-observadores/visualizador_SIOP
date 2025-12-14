@@ -9,6 +9,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/application/providers.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/application/geojson_service.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/custom_grid_layer.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
@@ -956,6 +957,18 @@ class _MapScreenState extends ConsumerState<MapScreen>
                         'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                     userAgentPackageName:
                         'com.danielditullio.visualizador_siop',
+                  ),
+
+                  // Graticule
+                  CustomGridLayer(
+                    lineColor: Colors.blueGrey.withValues(
+                      alpha: 0.3,
+                    ), // Color náutico sutil
+                    labelStyle: TextStyle(
+                      color: Colors.blueGrey[800],
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
 
                   // GeoJSON Layers (Below tracks)
