@@ -190,8 +190,15 @@ DateTime? _dateFromRow(Map<String, dynamic> row) {
     DateTime temp = DateTime.parse(isoStr);
     if (!temp.isUtc) {
       temp = DateTime.utc(
-        temp.year, temp.month, temp.day, temp.hour, temp.minute,
-        temp.second, temp.millisecond, temp.microsecond);
+        temp.year,
+        temp.month,
+        temp.day,
+        temp.hour,
+        temp.minute,
+        temp.second,
+        temp.millisecond,
+        temp.microsecond,
+      );
     }
     return temp.toLocal();
   } catch (e) {
@@ -204,14 +211,16 @@ List<MapPoint> _extractMapPoints(List<Map<String, dynamic>> rows) {
   for (final row in rows) {
     final latLng = _latLngFromRow(row);
     if (latLng != null) {
-      points.add(MapPoint(
-        position: latLng,
-        timestamp: _dateFromRow(row),
-        shipName: _getStringFromRow(row, 'buque'),
-        matricula: _getStringFromRow(row, 'matricula'),
-        speed: _coordinateFromRow(row, 'velocidad'),
-        course: _coordinateFromRow(row, 'rumbo'),
-      ));
+      points.add(
+        MapPoint(
+          position: latLng,
+          timestamp: _dateFromRow(row),
+          shipName: _getStringFromRow(row, 'buque'),
+          matricula: _getStringFromRow(row, 'matricula'),
+          speed: _coordinateFromRow(row, 'velocidad'),
+          course: _coordinateFromRow(row, 'rumbo'),
+        ),
+      );
     }
   }
   return points;
@@ -219,190 +228,218 @@ List<MapPoint> _extractMapPoints(List<Map<String, dynamic>> rows) {
 
 // --- Trip Detection Logic ---
 
-final List<Color> _tripColors = [
-  Colors.orange, Colors.purple, Colors.teal,
-];
+final List<Color> _tripColors = [Colors.orange, Colors.purple, Colors.teal];
 
 List<_Trip> _detectTripsMethod1(List<MapPoint> points) {
-    if (points.length < 6) return [];
+  if (points.length < 6) return [];
 
-    List<_Trip> trips = [];
-    int? pendingDepartureIndex;
+  List<_Trip> trips = [];
+  int? pendingDepartureIndex;
 
-    for (int i = 0; i <= points.length - 6; i++) {
-      bool allValid = true;
-      for (int j = 0; j < 6; j++) {
-        if (points[i + j].speed == null || points[i + j].timestamp == null) {
-          allValid = false;
-          break;
-        }
+  for (int i = 0; i <= points.length - 6; i++) {
+    bool allValid = true;
+    for (int j = 0; j < 6; j++) {
+      if (points[i + j].speed == null || points[i + j].timestamp == null) {
+        allValid = false;
+        break;
       }
-      if (!allValid) continue;
+    }
+    if (!allValid) continue;
 
-      bool first5Zero = true;
-      for (int j = 0; j < 5; j++) {
-        if (points[i + j].speed != 0) {
-          first5Zero = false;
-          break;
-        }
+    bool first5Zero = true;
+    for (int j = 0; j < 5; j++) {
+      if (points[i + j].speed != 0) {
+        first5Zero = false;
+        break;
       }
+    }
 
-      bool lastGtZero = points[i + 5].speed! > 0;
+    bool lastGtZero = points[i + 5].speed! > 0;
 
-      if (first5Zero && lastGtZero) {
-        pendingDepartureIndex = i + 5;
+    if (first5Zero && lastGtZero) {
+      pendingDepartureIndex = i + 5;
+    }
+
+    bool last5Zero = true;
+    for (int j = 1; j < 6; j++) {
+      if (points[i + j].speed != 0) {
+        last5Zero = false;
+        break;
       }
+    }
+    bool firstGtZero = points[i].speed! > 0;
 
-      bool last5Zero = true;
-      for (int j = 1; j < 6; j++) {
-        if (points[i + j].speed != 0) {
-          last5Zero = false;
-          break;
-        }
-      }
-      bool firstGtZero = points[i].speed! > 0;
+    if (firstGtZero && last5Zero) {
+      if (pendingDepartureIndex != null) {
+        final endIndex = i;
+        final startPoint = points[pendingDepartureIndex];
+        final endPoint = points[endIndex];
+        final duration = endPoint.timestamp!.difference(startPoint.timestamp!);
 
-      if (firstGtZero && last5Zero) {
-        if (pendingDepartureIndex != null) {
-          final endIndex = i;
-          final startPoint = points[pendingDepartureIndex];
-          final endPoint = points[endIndex];
-          final duration = endPoint.timestamp!.difference(startPoint.timestamp!);
-          
-          double sumSpeed = 0.0;
-          int count = 0;
-          for (int k = pendingDepartureIndex; k <= endIndex; k++) {
-            if (points[k].speed != null) {
-              sumSpeed += points[k].speed!;
-              count++;
-            }
+        double sumSpeed = 0.0;
+        int count = 0;
+        for (int k = pendingDepartureIndex; k <= endIndex; k++) {
+          if (points[k].speed != null) {
+            sumSpeed += points[k].speed!;
+            count++;
           }
-          final double avgSpeed = count > 0 ? sumSpeed / count : 0.0;
+        }
+        final double avgSpeed = count > 0 ? sumSpeed / count : 0.0;
 
-          if (duration.inHours >= 5 && avgSpeed >= 2) {
-            if (endIndex > pendingDepartureIndex) {
-              final tripPoints = points.sublist(pendingDepartureIndex, endIndex + 1);
-              trips.add(_Trip(
+        if (duration.inHours >= 5 && avgSpeed >= 2) {
+          if (endIndex > pendingDepartureIndex) {
+            final tripPoints = points.sublist(
+              pendingDepartureIndex,
+              endIndex + 1,
+            );
+            trips.add(
+              _Trip(
                 startPoint: startPoint,
                 endPoint: endPoint,
                 pathPoints: tripPoints.map((p) => p.position).toList(),
                 tripPoints: tripPoints,
                 color: _tripColors[trips.length % _tripColors.length],
-              ));
-              pendingDepartureIndex = null;
-            }
-          } else {
+              ),
+            );
             pendingDepartureIndex = null;
           }
+        } else {
+          pendingDepartureIndex = null;
         }
       }
     }
-    return trips;
+  }
+  return trips;
 }
 
 List<_Trip> _detectTripsMethod2(List<MapPoint> points) {
-    if (points.length < 6) return [];
-    List<_Trip> trips = [];
-    int? pendingDepartureIndex;
-    for (int i = 0; i <= points.length - 6; i++) {
-      bool allValid = true;
-      for (int j = 0; j < 6; j++) {
-        if (points[i + j].speed == null || points[i + j].timestamp == null) {
-          allValid = false;
-          break;
-        }
+  if (points.length < 6) return [];
+  List<_Trip> trips = [];
+  int? pendingDepartureIndex;
+  for (int i = 0; i <= points.length - 6; i++) {
+    bool allValid = true;
+    for (int j = 0; j < 6; j++) {
+      if (points[i + j].speed == null || points[i + j].timestamp == null) {
+        allValid = false;
+        break;
       }
-      if (!allValid) continue;
-      bool first5Zero = true;
-      for (int j = 0; j < 5; j++) {
-        if (points[i + j].speed! >= 0.5) {
-          first5Zero = false;
-          break;
-        }
+    }
+    if (!allValid) continue;
+    bool first5Zero = true;
+    for (int j = 0; j < 5; j++) {
+      if (points[i + j].speed! >= 0.5) {
+        first5Zero = false;
+        break;
       }
-      bool lastGtZero = points[i + 5].speed! > 1.0;
-      if (first5Zero && lastGtZero) {
-        pendingDepartureIndex = i + 5;
+    }
+    bool lastGtZero = points[i + 5].speed! > 1.0;
+    if (first5Zero && lastGtZero) {
+      pendingDepartureIndex = i + 5;
+    }
+    bool last5Zero = true;
+    for (int j = 1; j < 6; j++) {
+      if (points[i + j].speed! >= 0.3) {
+        last5Zero = false;
+        break;
       }
-      bool last5Zero = true;
-      for (int j = 1; j < 6; j++) {
-        if (points[i + j].speed! >= 0.3) {
-          last5Zero = false;
-          break;
-        }
-      }
-      bool firstGtZero = points[i].speed! > 0.3;
-      if (firstGtZero && last5Zero) {
-        if (pendingDepartureIndex != null) {
-          final endIndex = i;
-          final startPoint = points[pendingDepartureIndex];
-          final endPoint = points[endIndex];
-          final duration = endPoint.timestamp!.difference(startPoint.timestamp!);
-          if (duration.inHours >= 5) {
-            if (endIndex > pendingDepartureIndex) {
-              final tripPoints = points.sublist(pendingDepartureIndex, endIndex + 1);
-              trips.add(_Trip(
+    }
+    bool firstGtZero = points[i].speed! > 0.3;
+    if (firstGtZero && last5Zero) {
+      if (pendingDepartureIndex != null) {
+        final endIndex = i;
+        final startPoint = points[pendingDepartureIndex];
+        final endPoint = points[endIndex];
+        final duration = endPoint.timestamp!.difference(startPoint.timestamp!);
+        if (duration.inHours >= 5) {
+          if (endIndex > pendingDepartureIndex) {
+            final tripPoints = points.sublist(
+              pendingDepartureIndex,
+              endIndex + 1,
+            );
+            trips.add(
+              _Trip(
                 startPoint: startPoint,
                 endPoint: endPoint,
                 pathPoints: tripPoints.map((p) => p.position).toList(),
                 tripPoints: tripPoints,
                 color: _tripColors[trips.length % _tripColors.length],
-              ));
-              pendingDepartureIndex = null;
-            }
-          } else {
+              ),
+            );
             pendingDepartureIndex = null;
           }
+        } else {
+          pendingDepartureIndex = null;
         }
       }
     }
-    return trips;
+  }
+  return trips;
 }
 
 List<_Trip> _detectTripsLegacy(List<MapPoint> points) {
-    if (points.length < 6) return [];
-    List<_Trip> trips = [];
-    int? pendingDepartureIndex;
-    for (int i = 0; i <= points.length - 6; i++) {
-      final p = points.sublist(i, i + 6);
-      if (p.any((pt) => pt.speed == null || pt.timestamp == null)) continue;
-      bool isDeparture = p[0].speed == 0 && p[1].speed == 0 && p[2].speed == 0 &&
-                         p[3].speed! > 0 && p[4].speed! > 0 && p[5].speed! > 0;
-      bool isArrival = p[0].speed! > 0 && p[1].speed! > 0 && p[2].speed! > 0 &&
-                       p[3].speed == 0 && p[4].speed == 0 && p[5].speed == 0;
-      if (isDeparture) {
-        pendingDepartureIndex = i + 3;
-      } else if (isArrival) {
-        if (pendingDepartureIndex != null) {
-          final endIndex = i + 3;
-          final tripPoints = points.sublist(pendingDepartureIndex, endIndex + 1);
-          trips.add(_Trip(
+  if (points.length < 6) return [];
+  List<_Trip> trips = [];
+  int? pendingDepartureIndex;
+  for (int i = 0; i <= points.length - 6; i++) {
+    final p = points.sublist(i, i + 6);
+    if (p.any((pt) => pt.speed == null || pt.timestamp == null)) continue;
+    bool isDeparture =
+        p[0].speed == 0 &&
+        p[1].speed == 0 &&
+        p[2].speed == 0 &&
+        p[3].speed! > 0 &&
+        p[4].speed! > 0 &&
+        p[5].speed! > 0;
+    bool isArrival =
+        p[0].speed! > 0 &&
+        p[1].speed! > 0 &&
+        p[2].speed! > 0 &&
+        p[3].speed == 0 &&
+        p[4].speed == 0 &&
+        p[5].speed == 0;
+    if (isDeparture) {
+      pendingDepartureIndex = i + 3;
+    } else if (isArrival) {
+      if (pendingDepartureIndex != null) {
+        final endIndex = i + 3;
+        final tripPoints = points.sublist(pendingDepartureIndex, endIndex + 1);
+        trips.add(
+          _Trip(
             startPoint: points[pendingDepartureIndex],
             endPoint: points[endIndex],
             pathPoints: tripPoints.map((p) => p.position).toList(),
             tripPoints: tripPoints,
             color: _tripColors[trips.length % _tripColors.length],
-          ));
-          pendingDepartureIndex = null;
-        }
+          ),
+        );
+        pendingDepartureIndex = null;
       }
     }
-    return trips;
+  }
+  return trips;
 }
 
 int _calculateUniqueNavigatedDays(List<_Trip> detectedTrips) {
-    if (detectedTrips.isEmpty) return 0;
-    final uniqueDays = <String>{};
-    final dateFormat = DateFormat('yyyy-MM-dd');
-    for (final trip in detectedTrips) {
-      DateTime currentDay = DateTime(trip.startTime.year, trip.startTime.month, trip.startTime.day);
-      final endDay = DateTime(trip.endTime.year, trip.endTime.month, trip.endTime.day);
-      while (!currentDay.isAfter(endDay)) {
-        uniqueDays.add(dateFormat.format(currentDay));
-        currentDay = currentDay.add(const Duration(days: 1));
-      }
+  if (detectedTrips.isEmpty) return 0;
+  final uniqueDays = <String>{};
+  final dateFormat = DateFormat('yyyy-MM-dd');
+  for (final trip in detectedTrips) {
+    DateTime currentDay = DateTime(
+      trip.startTime.year,
+      trip.startTime.month,
+      trip.startTime.day,
+    );
+    final endDay = DateTime(
+      trip.endTime.year,
+      trip.endTime.month,
+      trip.endTime.day,
+    );
+    while (!currentDay.isAfter(endDay)) {
+      uniqueDays.add(dateFormat.format(currentDay));
+      currentDay = currentDay.add(const Duration(days: 1));
     }
-    return uniqueDays.length;
+  }
+  return uniqueDays.length;
 }
 
 // END: Code copied from map_screen.dart
@@ -462,7 +499,10 @@ void main() {
       final utcDate = DateTime.utc(2023, 1, 1, 12);
       // Dart's DateTime.parse assumes UTC if Z is present, otherwise local.
       // Our function standardizes this by assuming UTC input if no TZ info.
-      expect(_dateFromRow({'fechahora': '2023-10-26 14:30:00'}), DateTime.utc(2023, 10, 26, 14, 30).toLocal());
+      expect(
+        _dateFromRow({'fechahora': '2023-10-26 14:30:00'}),
+        DateTime.utc(2023, 10, 26, 14, 30).toLocal(),
+      );
       expect(_dateFromRow({'date': utcDate}), utcDate.toLocal());
     });
 
@@ -473,8 +513,20 @@ void main() {
 
     test('_extractMapPoints converts list of rows to MapPoints', () {
       final rows = [
-        {'buque': 'Ship1', 'latitud': -42.0, 'longitud': -65.0, 'velocidad': 5.0, 'fechahora': '2023-10-26 10:00:00'},
-        {'buque': 'Ship1', 'latitud': -42.1, 'longitud': -65.1, 'velocidad': 0.0, 'fechahora': '2023-10-26 11:00:00'},
+        {
+          'buque': 'Ship1',
+          'latitud': -42.0,
+          'longitud': -65.0,
+          'velocidad': 5.0,
+          'fechahora': '2023-10-26 10:00:00',
+        },
+        {
+          'buque': 'Ship1',
+          'latitud': -42.1,
+          'longitud': -65.1,
+          'velocidad': 0.0,
+          'fechahora': '2023-10-26 11:00:00',
+        },
       ];
       final points = _extractMapPoints(rows);
       expect(points.length, 2);
@@ -486,107 +538,153 @@ void main() {
 
   group('Map Screen Logic - Trip Detection & Calculation', () {
     // Helper to generate points
-    MapPoint createPoint(DateTime time, double speed) => MapPoint(
-        position: const LatLng(0, 0),
-        timestamp: time,
-        speed: speed);
+    MapPoint createPoint(DateTime time, double speed) =>
+        MapPoint(position: const LatLng(0, 0), timestamp: time, speed: speed);
 
     final t = DateTime.now();
     final pointsForTrip = [
       // In port
       for (int i = 0; i < 5; i++) createPoint(t.add(Duration(hours: i)), 0.0),
-      // Departure
+      // Departure (7 hours of movement to satisfy >= 5h duration)
       createPoint(t.add(const Duration(hours: 5)), 5.0),
       createPoint(t.add(const Duration(hours: 6)), 5.0),
       createPoint(t.add(const Duration(hours: 7)), 5.0),
       createPoint(t.add(const Duration(hours: 8)), 5.0),
       createPoint(t.add(const Duration(hours: 9)), 5.0),
+      createPoint(t.add(const Duration(hours: 10)), 5.0),
+      createPoint(t.add(const Duration(hours: 11)), 5.0),
       // Arrival
-      createPoint(t.add(const Duration(hours: 10)), 0.0),
-      createPoint(t.add(const Duration(hours: 11)), 0.0),
       createPoint(t.add(const Duration(hours: 12)), 0.0),
       createPoint(t.add(const Duration(hours: 13)), 0.0),
       createPoint(t.add(const Duration(hours: 14)), 0.0),
+      createPoint(t.add(const Duration(hours: 15)), 0.0),
+      createPoint(t.add(const Duration(hours: 16)), 0.0),
     ];
 
-     test('_detectTripsMethod1 identifies a valid trip', () {
+    test('_detectTripsMethod1 identifies a valid trip', () {
       final trips = _detectTripsMethod1(pointsForTrip);
       expect(trips.length, 1);
       expect(trips[0].startPoint.timestamp, t.add(const Duration(hours: 5)));
-      expect(trips[0].endPoint.timestamp, t.add(const Duration(hours: 9)));
+      expect(trips[0].endPoint.timestamp, t.add(const Duration(hours: 11)));
       expect(trips[0].durationInDays, 1);
     });
 
-    test('_detectTripsMethod2 identifies a valid trip with different thresholds', () {
-       final pointsForMethod2 = [
-          for (int i = 0; i < 5; i++) createPoint(t.add(Duration(hours: i)), 0.2), // speed < 0.5
-          createPoint(t.add(const Duration(hours: 5)), 1.5), // speed > 1.0
+    test(
+      '_detectTripsMethod2 identifies a valid trip with different thresholds',
+      () {
+        final pointsForMethod2 = [
+          for (int i = 0; i < 5; i++)
+            createPoint(t.add(Duration(hours: i)), 0.2), // speed < 0.5
+          // Movement (> 5h)
+          createPoint(t.add(const Duration(hours: 5)), 1.5),
           createPoint(t.add(const Duration(hours: 6)), 1.5),
           createPoint(t.add(const Duration(hours: 7)), 1.5),
           createPoint(t.add(const Duration(hours: 8)), 1.5),
           createPoint(t.add(const Duration(hours: 9)), 1.5),
-          createPoint(t.add(const Duration(hours: 10)), 0.2), // speed < 0.3
-          for (int i = 1; i < 5; i++) createPoint(t.add(Duration(hours: 10 + i)), 0.1),
-       ];
-      final trips = _detectTripsMethod2(pointsForMethod2);
-      expect(trips.length, 1);
-      expect(trips[0].startPoint.timestamp, t.add(const Duration(hours: 5)));
-      expect(trips[0].endPoint.timestamp, t.add(const Duration(hours: 9)));
-    });
+          createPoint(t.add(const Duration(hours: 10)), 1.5),
+          createPoint(t.add(const Duration(hours: 11)), 1.5),
+          // Arrival
+          createPoint(t.add(const Duration(hours: 12)), 0.2), // speed < 0.3
+          for (int i = 1; i < 5; i++)
+            createPoint(t.add(Duration(hours: 12 + i)), 0.1),
+        ];
+        final trips = _detectTripsMethod2(pointsForMethod2);
+        expect(trips.length, 1);
+        expect(trips[0].startPoint.timestamp, t.add(const Duration(hours: 5)));
+        expect(trips[0].endPoint.timestamp, t.add(const Duration(hours: 11)));
+      },
+    );
 
     test('_detectTripsLegacy identifies a valid trip', () {
-       final pointsForLegacy = [
-          createPoint(t.add(Duration(hours: 0)), 0.0),
-          createPoint(t.add(Duration(hours: 1)), 0.0),
-          createPoint(t.add(Duration(hours: 2)), 0.0),
-          createPoint(t.add(Duration(hours: 3)), 5.0),
-          createPoint(t.add(Duration(hours: 4)), 5.0),
-          createPoint(t.add(Duration(hours: 5)), 5.0),
-          createPoint(t.add(Duration(hours: 6)), 0.0),
-          createPoint(t.add(Duration(hours: 7)), 0.0),
-          createPoint(t.add(Duration(hours: 8)), 0.0),
-       ];
+      final pointsForLegacy = [
+        createPoint(t.add(Duration(hours: 0)), 0.0),
+        createPoint(t.add(Duration(hours: 1)), 0.0),
+        createPoint(t.add(Duration(hours: 2)), 0.0),
+        createPoint(t.add(Duration(hours: 3)), 5.0),
+        createPoint(t.add(Duration(hours: 4)), 5.0),
+        createPoint(t.add(Duration(hours: 5)), 5.0),
+        createPoint(t.add(Duration(hours: 6)), 0.0),
+        createPoint(t.add(Duration(hours: 7)), 0.0),
+        createPoint(t.add(Duration(hours: 8)), 0.0),
+      ];
       final trips = _detectTripsLegacy(pointsForLegacy);
       expect(trips.length, 1);
       expect(trips[0].startPoint.timestamp, t.add(const Duration(hours: 3)));
       expect(trips[0].endPoint.timestamp, t.add(const Duration(hours: 6)));
     });
-    
-    test('_Trip.durationInDays calculates correctly for single and multi-day trips', () {
-      final start = DateTime(2023, 10, 26, 10, 00);
-      final endSameDay = DateTime(2023, 10, 26, 18, 00);
-      final endNextDay = DateTime(2023, 10, 27, 2, 00);
-      final trip1 = _Trip(
-          startPoint: MapPoint(position: const LatLng(0,0), timestamp: start),
-          endPoint: MapPoint(position: const LatLng(0,0), timestamp: endSameDay),
-          pathPoints: [], tripPoints: []);
-      final trip2 = _Trip(
-          startPoint: MapPoint(position: const LatLng(0,0), timestamp: start),
-          endPoint: MapPoint(position: const LatLng(0,0), timestamp: endNextDay),
-          pathPoints: [], tripPoints: []);
-      
-      expect(trip1.durationInDays, 1);
-      expect(trip2.durationInDays, 2);
-    });
 
-    test('_calculateUniqueNavigatedDays works with overlapping and distinct trips', () {
-      final t1 = _Trip(
-        startPoint: MapPoint(position: LatLng(0,0), timestamp: DateTime(2023, 1, 1)),
-        endPoint: MapPoint(position: LatLng(0,0), timestamp: DateTime(2023, 1, 3)),
-        pathPoints: [], tripPoints: []
-      ); // 3 days
-      final t2 = _Trip(
-        startPoint: MapPoint(position: LatLng(0,0), timestamp: DateTime(2023, 1, 3)),
-        endPoint: MapPoint(position: LatLng(0,0), timestamp: DateTime(2023, 1, 5)),
-        pathPoints: [], tripPoints: []
-      ); // 3 days, 1 overlapping
-      final t3 = _Trip(
-        startPoint: MapPoint(position: LatLng(0,0), timestamp: DateTime(2023, 1, 10)),
-        endPoint: MapPoint(position: LatLng(0,0), timestamp: DateTime(2023, 1, 10)),
-        pathPoints: [], tripPoints: []
-      ); // 1 day
+    test(
+      '_Trip.durationInDays calculates correctly for single and multi-day trips',
+      () {
+        final start = DateTime(2023, 10, 26, 10, 00);
+        final endSameDay = DateTime(2023, 10, 26, 18, 00);
+        final endNextDay = DateTime(2023, 10, 27, 2, 00);
+        final trip1 = _Trip(
+          startPoint: MapPoint(position: const LatLng(0, 0), timestamp: start),
+          endPoint: MapPoint(
+            position: const LatLng(0, 0),
+            timestamp: endSameDay,
+          ),
+          pathPoints: [],
+          tripPoints: [],
+        );
+        final trip2 = _Trip(
+          startPoint: MapPoint(position: const LatLng(0, 0), timestamp: start),
+          endPoint: MapPoint(
+            position: const LatLng(0, 0),
+            timestamp: endNextDay,
+          ),
+          pathPoints: [],
+          tripPoints: [],
+        );
 
-      expect(_calculateUniqueNavigatedDays([t1, t2, t3]), 6); // 1,2,3,4,5,10
-    });
+        expect(trip1.durationInDays, 1);
+        expect(trip2.durationInDays, 2);
+      },
+    );
+
+    test(
+      '_calculateUniqueNavigatedDays works with overlapping and distinct trips',
+      () {
+        final t1 = _Trip(
+          startPoint: MapPoint(
+            position: LatLng(0, 0),
+            timestamp: DateTime(2023, 1, 1),
+          ),
+          endPoint: MapPoint(
+            position: LatLng(0, 0),
+            timestamp: DateTime(2023, 1, 3),
+          ),
+          pathPoints: [],
+          tripPoints: [],
+        ); // 3 days
+        final t2 = _Trip(
+          startPoint: MapPoint(
+            position: LatLng(0, 0),
+            timestamp: DateTime(2023, 1, 3),
+          ),
+          endPoint: MapPoint(
+            position: LatLng(0, 0),
+            timestamp: DateTime(2023, 1, 5),
+          ),
+          pathPoints: [],
+          tripPoints: [],
+        ); // 3 days, 1 overlapping
+        final t3 = _Trip(
+          startPoint: MapPoint(
+            position: LatLng(0, 0),
+            timestamp: DateTime(2023, 1, 10),
+          ),
+          endPoint: MapPoint(
+            position: LatLng(0, 0),
+            timestamp: DateTime(2023, 1, 10),
+          ),
+          pathPoints: [],
+          tripPoints: [],
+        ); // 1 day
+
+        expect(_calculateUniqueNavigatedDays([t1, t2, t3]), 6); // 1,2,3,4,5,10
+      },
+    );
   });
 }
