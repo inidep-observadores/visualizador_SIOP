@@ -422,7 +422,128 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _scheduleViewAdjustment(trackBounds, mapCenter, fallbackZoom);
   }
 
-  List<_Trip> _detectTrips(List<MapPoint> points) {
+  List<_Trip> _detectTripsMethod1(List<MapPoint> points) {
+    if (points.length < 6) return [];
+
+    List<_Trip> trips = [];
+    int? pendingDepartureIndex;
+
+    // New V2 Logic
+    // Departure: 5 points with speed 0, followed by >=1 point with speed > 0
+    // Arrival:   >=1 point with speed > 0, followed by 5 points with speed 0
+    // (Essentially looking for the transition 0,0,0,0,0 -> >0 and >0 -> 0,0,0,0,0)
+
+    for (int i = 0; i <= points.length - 6; i++) {
+      // We look at a window of 6 points to see the transition
+      // [0, 1, 2, 3, 4] -> [5]
+
+      // Check for validity first
+      bool allValid = true;
+      for (int j = 0; j < 6; j++) {
+        if (points[i + j].speed == null || points[i + j].timestamp == null) {
+          allValid = false;
+          break;
+        }
+      }
+      if (!allValid) continue;
+
+      bool first5Zero = true;
+      for (int j = 0; j < 5; j++) {
+        if (points[i + j].speed != 0) {
+          first5Zero = false;
+          break;
+        }
+      }
+
+      bool lastGtZero = points[i + 5].speed! > 0;
+
+      // Check Departure condition: 0,0,0,0,0 -> >0
+      // The departure point is the first point with speed > 0, which is index i+5
+      if (first5Zero && lastGtZero) {
+        if (pendingDepartureIndex == null) {
+          pendingDepartureIndex = i + 5;
+        } else {
+          // If we already have a pending departure, we update it?
+          // Or we prioritize the first one found?
+          // If we find another departure without an arrival, it might mean the previous "trip" was just a short movement.
+          // Let's reset start to this new one, assuming the previous one wasn't a real trip.
+          pendingDepartureIndex = i + 5;
+        }
+      }
+
+      // Check Arrival condition: >0 -> 0,0,0,0,0
+      // We need to look at window: [i] is > 0, [i+1...i+5] are 0
+      // But for that we need a different loop structure or just check both patterns
+      // Let's check "Last 5 Zero" and "First > 0"
+
+      bool last5Zero = true;
+      for (int j = 1; j < 6; j++) {
+        if (points[i + j].speed != 0) {
+          last5Zero = false;
+          break;
+        }
+      }
+      bool firstGtZero = points[i].speed! > 0;
+
+      // Arrival Condition: >0 -> 0,0,0,0,0
+      // The arrival point is the last point with speed > 0, which is index i
+      if (firstGtZero && last5Zero) {
+        if (pendingDepartureIndex != null) {
+          final endIndex = i;
+
+          // Validate Minimum Duration (5 hours)
+          final startPoint = points[pendingDepartureIndex];
+          final endPoint = points[endIndex];
+          final duration = endPoint.timestamp!.difference(
+            startPoint.timestamp!,
+          );
+
+          double sumSpeed = 0.0;
+          int count = 0;
+          // Calculate average speed
+          for (int k = pendingDepartureIndex; k <= endIndex; k++) {
+            if (points[k].speed != null) {
+              sumSpeed += points[k].speed!;
+              count++;
+            }
+          }
+          final double avgSpeed = count > 0 ? sumSpeed / count : 0.0;
+
+          if (duration.inHours >= 5 && avgSpeed >= 2) {
+            final colorIndex = trips.length % _tripColors.length;
+
+            // Indices might be inverted if we scanned weirdly, but here i > pendingDepartureIndex usually
+            // Wait, if pendingDepartureIndex = i+5 (from previous steps), and current i (arrival) is later
+            // We need to ensure valid sublist ranges
+
+            if (endIndex > pendingDepartureIndex) {
+              final tripPoints = points.sublist(
+                pendingDepartureIndex,
+                endIndex + 1,
+              );
+              final pathPoints = tripPoints.map((p) => p.position).toList();
+
+              final trip = _Trip(
+                startPoint: startPoint,
+                endPoint: endPoint,
+                pathPoints: pathPoints,
+                tripPoints: tripPoints,
+                color: _tripColors[colorIndex],
+              );
+              trips.add(trip);
+              pendingDepartureIndex = null;
+            }
+          } else {
+            // Trip too short, discard it.
+            pendingDepartureIndex = null;
+          }
+        }
+      }
+    }
+    return trips;
+  }
+
+  List<_Trip> _detectTripsMethod2(List<MapPoint> points) {
     if (points.length < 6) return [];
 
     List<_Trip> trips = [];
@@ -478,12 +599,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
       bool last5Zero = true;
       for (int j = 1; j < 6; j++) {
-        if (points[i + j].speed! >= 0.5) {
+        if (points[i + j].speed! >= 0.3) {
           last5Zero = false;
           break;
         }
       }
-      bool firstGtZero = points[i].speed! > 1.0;
+      bool firstGtZero = points[i].speed! > 0.3;
 
       // Arrival Condition: >0 -> 0,0,0,0,0
       // The arrival point is the last point with speed > 0, which is index i
@@ -623,7 +744,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
         .map((t) => t.startTime.millisecondsSinceEpoch)
         .toSet();
 
-    _detectedTrips = _detectTrips(_filteredPoints);
+    _detectedTrips = _detectTripsMethod1(_filteredPoints);
 
     // Restore state
     for (final trip in _detectedTrips) {
