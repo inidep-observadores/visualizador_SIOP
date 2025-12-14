@@ -1,5 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/data/services/excel_parser.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/data/services/excel_parser.dart';
 
 part 'providers.g.dart';
 

@@ -1,4 +1,4 @@
-# siop_data_visualizer
+# visualizador_siop
 
 Visualizador de posiciones de buques exportadas desde SIOP
 

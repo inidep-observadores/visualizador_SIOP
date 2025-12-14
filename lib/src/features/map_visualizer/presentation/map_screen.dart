@@ -7,13 +7,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/application/providers.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/application/geojson_service.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/application/providers.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/application/geojson_service.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/loading_dialog.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/custom_date_time_picker.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/loading_dialog.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/custom_date_time_picker.dart';
 
 class MapPoint {
   final LatLng position;
@@ -926,7 +926,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 TileLayer(
                   urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                   userAgentPackageName:
-                      'com.danielditullio.siop_data_visualizer',
+                      'com.danielditullio.visualizador_siop',
                 ),
 
                 // GeoJSON Layers (Below tracks)

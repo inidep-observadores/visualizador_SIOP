@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:siop_data_visualizer/src/features/map_visualizer/data/services/excel_parser.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/data/services/excel_parser.dart';
 
 void main() {
   group('CSV Parser Tests', () {
