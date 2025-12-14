@@ -13,6 +13,7 @@ import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/wi
 import 'package:intl/intl.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
 import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/loading_dialog.dart';
+import 'package:siop_data_visualizer/src/features/map_visualizer/presentation/widgets/custom_date_time_picker.dart';
 
 class MapPoint {
   final LatLng position;
@@ -1200,6 +1201,16 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                   )
                                 : const LinearProgressIndicator(value: 0),
                           ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            onPressed: _pickDateAndTime,
+                            icon: const Icon(Icons.calendar_month),
+                            iconSize: 22,
+                            color: Colors.indigoAccent,
+                            tooltip: 'Ir a fecha...',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
                         ],
                       ),
 
@@ -1244,74 +1255,86 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             ),
                             SizedBox(
                               height: 20,
-                              child: SliderTheme(
-                                data: SliderTheme.of(context).copyWith(
-                                  activeTrackColor: Colors.indigoAccent,
-                                  inactiveTrackColor: Colors.black12,
-                                  trackHeight: 2,
-                                  rangeThumbShape:
-                                      const RoundRangeSliderThumbShape(
-                                        enabledThumbRadius: 4,
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        activeTrackColor: Colors.indigoAccent,
+                                        inactiveTrackColor: Colors.black12,
+                                        trackHeight: 2,
+                                        rangeThumbShape:
+                                            const RoundRangeSliderThumbShape(
+                                              enabledThumbRadius: 4,
+                                            ),
+                                        overlayColor: Colors.indigo.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        valueIndicatorColor: Colors.indigo,
+                                        valueIndicatorTextStyle:
+                                            const TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                        showValueIndicator:
+                                            ShowValueIndicator.onDrag,
                                       ),
-                                  overlayColor: Colors.indigo.withValues(
-                                    alpha: 0.2,
-                                  ),
-                                  valueIndicatorColor: Colors.indigo,
-                                  valueIndicatorTextStyle: const TextStyle(
-                                    color: Colors.white,
-                                  ),
-                                  showValueIndicator: ShowValueIndicator.onDrag,
-                                ),
-                                child: RangeSlider(
-                                  values:
-                                      _currentRangeValues ??
-                                      const RangeValues(0, 1),
-                                  min:
-                                      _minDate?.millisecondsSinceEpoch
-                                          .toDouble() ??
-                                      0,
-                                  max:
-                                      _maxDate?.millisecondsSinceEpoch
-                                          .toDouble() ??
-                                      1,
-                                  labels: _currentRangeValues != null
-                                      ? RangeLabels(
-                                          _formatDateTime(
-                                            DateTime.fromMillisecondsSinceEpoch(
-                                              _currentRangeValues!.start
-                                                  .toInt(),
-                                            ),
-                                          ),
-                                          _formatDateTime(
-                                            DateTime.fromMillisecondsSinceEpoch(
-                                              _currentRangeValues!.end.toInt(),
-                                            ),
-                                          ),
-                                        )
-                                      : null,
-                                  onChanged:
-                                      (_minDate != null &&
-                                          _maxDate != null &&
-                                          _minDate != _maxDate)
-                                      ? (RangeValues values) {
-                                          setState(() {
-                                            _currentRangeValues = values;
-                                            if (_currentSliderValue != null) {
-                                              if (_currentSliderValue! <
-                                                  values.start) {
-                                                _currentSliderValue =
-                                                    values.start;
-                                              } else if (_currentSliderValue! >
-                                                  values.end) {
-                                                _currentSliderValue =
-                                                    values.end;
+                                      child: RangeSlider(
+                                        values:
+                                            _currentRangeValues ??
+                                            const RangeValues(0, 1),
+                                        min:
+                                            _minDate?.millisecondsSinceEpoch
+                                                .toDouble() ??
+                                            0,
+                                        max:
+                                            _maxDate?.millisecondsSinceEpoch
+                                                .toDouble() ??
+                                            1,
+                                        labels: _currentRangeValues != null
+                                            ? RangeLabels(
+                                                _formatDateTime(
+                                                  DateTime.fromMillisecondsSinceEpoch(
+                                                    _currentRangeValues!.start
+                                                        .toInt(),
+                                                  ),
+                                                ),
+                                                _formatDateTime(
+                                                  DateTime.fromMillisecondsSinceEpoch(
+                                                    _currentRangeValues!.end
+                                                        .toInt(),
+                                                  ),
+                                                ),
+                                              )
+                                            : null,
+                                        onChanged:
+                                            (_minDate != null &&
+                                                _maxDate != null &&
+                                                _minDate != _maxDate)
+                                            ? (RangeValues values) {
+                                                setState(() {
+                                                  _currentRangeValues = values;
+                                                  if (_currentSliderValue !=
+                                                      null) {
+                                                    if (_currentSliderValue! <
+                                                            values.start ||
+                                                        _currentSliderValue! >
+                                                            values.end) {
+                                                      // Clamp slider if range moves past it?
+                                                      // Or just let filter handle hiding point
+                                                      _filterPoints();
+                                                    } else {
+                                                      _filterPoints();
+                                                    }
+                                                  } else {
+                                                    _filterPoints();
+                                                  }
+                                                });
                                               }
-                                            }
-                                            _filterPoints();
-                                          });
-                                        }
-                                      : null,
-                                ),
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
@@ -1627,6 +1650,87 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     return uniqueDays.length;
+  }
+
+  Future<void> _pickDateAndTime() async {
+    if (_allPoints.isEmpty || _minDate == null || _maxDate == null) return;
+
+    // Use current selection as initial date if available, else minDate
+    final initialDate = _currentSliderValue != null
+        ? DateTime.fromMillisecondsSinceEpoch(_currentSliderValue!.toInt())
+        : _minDate!;
+
+    final selectedDateTime = await showDialog<DateTime>(
+      context: context,
+      builder: (context) => CustomDateTimePicker(
+        initialDate: initialDate,
+        firstDate: _minDate!,
+        lastDate: _maxDate!,
+      ),
+    );
+
+    if (selectedDateTime != null && mounted) {
+      _jumpToDate(selectedDateTime);
+    }
+  }
+
+  void _jumpToDate(DateTime target) {
+    if (_allPoints.isEmpty) return;
+
+    // Find closest point in ALL points (even if currently filtered out)
+    final closest = _allPoints.reduce((a, b) {
+      if (a.timestamp == null || b.timestamp == null) return a;
+      final aDiff =
+          (a.timestamp!.millisecondsSinceEpoch - target.millisecondsSinceEpoch)
+              .abs();
+      final bDiff =
+          (b.timestamp!.millisecondsSinceEpoch - target.millisecondsSinceEpoch)
+              .abs();
+      return aDiff < bDiff ? a : b;
+    });
+
+    if (closest.timestamp == null) return;
+
+    final newTimestamp = closest.timestamp!.millisecondsSinceEpoch.toDouble();
+
+    // Ensure it is within current range values. If not, expand/shift the range.
+    if (_currentRangeValues != null) {
+      double start = _currentRangeValues!.start;
+      double end = _currentRangeValues!.end;
+      bool changed = false;
+
+      // Expand to include the new point if outside
+      if (newTimestamp < start) {
+        start = newTimestamp;
+        changed = true;
+      }
+      if (newTimestamp > end) {
+        end = newTimestamp;
+        changed = true;
+      }
+
+      if (changed) {
+        // Also ensure we respect min/max global limits just in case
+        if (_minDate != null &&
+            start < _minDate!.millisecondsSinceEpoch.toDouble()) {
+          start = _minDate!.millisecondsSinceEpoch.toDouble();
+        }
+        if (_maxDate != null &&
+            end > _maxDate!.millisecondsSinceEpoch.toDouble()) {
+          end = _maxDate!.millisecondsSinceEpoch.toDouble();
+        }
+
+        setState(() {
+          _currentRangeValues = RangeValues(start, end);
+        });
+      }
+    }
+
+    // Now update slider and marker (this will also trigger filter refresh)
+    _updateSliderAndMarker(newTimestamp);
+
+    // Also ensure map follows text to speech... I mean follows position
+    _ensureVisible(closest.position);
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
