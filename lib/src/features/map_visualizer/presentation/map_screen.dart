@@ -449,13 +449,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
       bool first5Zero = true;
       for (int j = 0; j < 5; j++) {
-        if (points[i + j].speed != 0) {
+        if (points[i + j].speed! >= 0.5) {
           first5Zero = false;
           break;
         }
       }
 
-      bool lastGtZero = points[i + 5].speed! > 0;
+      bool lastGtZero = points[i + 5].speed! > 1.0;
 
       // Check Departure condition: 0,0,0,0,0 -> >0
       // The departure point is the first point with speed > 0, which is index i+5
@@ -478,12 +478,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
 
       bool last5Zero = true;
       for (int j = 1; j < 6; j++) {
-        if (points[i + j].speed != 0) {
+        if (points[i + j].speed! >= 0.5) {
           last5Zero = false;
           break;
         }
       }
-      bool firstGtZero = points[i].speed! > 0;
+      bool firstGtZero = points[i].speed! > 1.0;
 
       // Arrival Condition: >0 -> 0,0,0,0,0
       // The arrival point is the last point with speed > 0, which is index i
