@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class CustomDateTimePicker extends StatefulWidget {
@@ -36,8 +35,32 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
     });
   }
 
+  Future<void> _selectTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: _selectedHour, minute: _selectedMinute),
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            alwaysUse24HourFormat: true,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
+    );
+    if (picked == null) {
+      return;
+    }
+    setState(() {
+      _selectedHour = picked.hour;
+      _selectedMinute = picked.minute;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final timeLabel = _formatTime(_selectedHour, _selectedMinute);
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       backgroundColor: Colors.white,
@@ -117,30 +140,21 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _buildTimeSpinner(
-                                value: _selectedHour,
-                                itemCount: 24,
-                                onChanged: (val) =>
-                                    setState(() => _selectedHour = val),
+                          OutlinedButton.icon(
+                            onPressed: _selectTime,
+                            icon: const Icon(Icons.access_time),
+                            label: Text(timeLabel),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
                               ),
-                              const Text(
-                                ":",
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black45,
-                                ),
+                              textStyle: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
                               ),
-                              _buildTimeSpinner(
-                                value: _selectedMinute,
-                                itemCount: 60,
-                                onChanged: (val) =>
-                                    setState(() => _selectedMinute = val),
-                              ),
-                            ],
+                              foregroundColor: Colors.indigo,
+                            ),
                           ),
                         ],
                       ),
@@ -186,46 +200,6 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
     );
   }
 
-  Widget _buildTimeSpinner({
-    required int value,
-    required int itemCount,
-    required ValueChanged<int> onChanged,
-  }) {
-    return SizedBox(
-      height: 120,
-      width: 70,
-      child: ScrollConfiguration(
-        behavior: ScrollConfiguration.of(context).copyWith(
-          dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
-        ),
-        child: ListWheelScrollView.useDelegate(
-          itemExtent: 40,
-          perspective: 0.005,
-          diameterRatio: 1.2,
-          physics: const FixedExtentScrollPhysics(),
-          controller: FixedExtentScrollController(initialItem: value),
-          onSelectedItemChanged: onChanged,
-          childDelegate: ListWheelChildBuilderDelegate(
-            childCount: itemCount,
-            builder: (context, index) {
-              final isSelected = index == value;
-              return Center(
-                child: Text(
-                  index.toString().padLeft(2, '0'),
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w400,
-                    color: isSelected ? Colors.indigo : Colors.grey[400],
-                  ),
-                ),
-              );
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
   String _formatFullDate(DateTime date, int hour, int minute) {
     // Simple basic formatting
     // You can use DateFormat from intl package if available, keeping it simple dependent-less if possible or reuse existing
@@ -255,5 +229,11 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
     final minStr = minute.toString().padLeft(2, '0');
 
     return "$dayStr, ${date.day} $monthStr - $hourStr:$minStr";
+  }
+
+  String _formatTime(int hour, int minute) {
+    final hourStr = hour.toString().padLeft(2, '0');
+    final minStr = minute.toString().padLeft(2, '0');
+    return "$hourStr:$minStr";
   }
 }
