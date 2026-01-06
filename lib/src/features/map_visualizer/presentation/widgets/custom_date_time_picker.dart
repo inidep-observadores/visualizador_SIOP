@@ -4,12 +4,14 @@ class CustomDateTimePicker extends StatefulWidget {
   final DateTime initialDate;
   final DateTime firstDate;
   final DateTime lastDate;
+  final bool includeTime;
 
   const CustomDateTimePicker({
     super.key,
     required this.initialDate,
     required this.firstDate,
     required this.lastDate,
+    this.includeTime = true,
   });
 
   @override
@@ -59,7 +61,13 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
 
   @override
   Widget build(BuildContext context) {
+    final showTimePicker = widget.includeTime;
     final timeLabel = _formatTime(_selectedHour, _selectedMinute);
+    final headerTitle =
+        showTimePicker ? 'SELECCIONAR FECHA Y HORA' : 'SELECCIONAR FECHA';
+    final headerValue = showTimePicker
+        ? _formatFullDate(_selectedDate, _selectedHour, _selectedMinute)
+        : _formatDateOnly(_selectedDate);
 
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -80,7 +88,7 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'SELECCIONAR FECHA Y HORA',
+                        headerTitle,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
@@ -90,11 +98,7 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        _formatFullDate(
-                          _selectedDate,
-                          _selectedHour,
-                          _selectedMinute,
-                        ),
+                        headerValue,
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -103,64 +107,35 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
                       ),
                     ],
                   ),
+                  if (showTimePicker) ...[
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: _selectTime,
+                      icon: const Icon(Icons.access_time),
+                      label: Text(timeLabel),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        foregroundColor: Colors.indigo,
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
             const Divider(height: 1),
             Flexible(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Calendar Side
-                  Flexible(
-                    flex: 3,
-                    child: CalendarDatePicker(
-                      initialDate: _selectedDate,
-                      firstDate: widget.firstDate,
-                      lastDate: widget.lastDate,
-                      onDateChanged: _onDateChanged,
-                    ),
-                  ),
-                  // Divider
-                  Container(width: 1, color: Colors.grey[200]),
-                  // Time Side
-                  Flexible(
-                    flex: 2,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Text(
-                            "HORA",
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black54,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          OutlinedButton.icon(
-                            onPressed: _selectTime,
-                            icon: const Icon(Icons.access_time),
-                            label: Text(timeLabel),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              foregroundColor: Colors.indigo,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
+              child: CalendarDatePicker(
+                initialDate: _selectedDate,
+                firstDate: widget.firstDate,
+                lastDate: widget.lastDate,
+                onDateChanged: _onDateChanged,
               ),
             ),
             const Divider(height: 1),
@@ -177,13 +152,19 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
                   const SizedBox(width: 8),
                   FilledButton(
                     onPressed: () {
-                      final finalDateTime = DateTime(
-                        _selectedDate.year,
-                        _selectedDate.month,
-                        _selectedDate.day,
-                        _selectedHour,
-                        _selectedMinute,
-                      );
+                      final finalDateTime = showTimePicker
+                          ? DateTime(
+                              _selectedDate.year,
+                              _selectedDate.month,
+                              _selectedDate.day,
+                              _selectedHour,
+                              _selectedMinute,
+                            )
+                          : DateTime(
+                              _selectedDate.year,
+                              _selectedDate.month,
+                              _selectedDate.day,
+                            );
                       Navigator.of(context).pop(finalDateTime);
                     },
                     style: FilledButton.styleFrom(
@@ -201,12 +182,15 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
   }
 
   String _formatFullDate(DateTime date, int hour, int minute) {
-    // Simple basic formatting
-    // You can use DateFormat from intl package if available, keeping it simple dependent-less if possible or reuse existing
-    // Assuming intl is available as we used it in main code
+    final dateLabel = _formatDateOnly(date);
+    final hourStr = hour.toString().padLeft(2, '0');
+    final minStr = minute.toString().padLeft(2, '0');
+    return "$dateLabel - $hourStr:$minStr";
+  }
 
-    // We'll mimic: "Lun, 13 Oct - 14:30"
-    final days = ['Lun', 'Mar', 'Mié', 'Vue', 'Vie', 'Sáb', 'Dom'];
+  String _formatDateOnly(DateTime date) {
+    // We'll mimic: "Lun, 13 Oct"
+    final days = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
     final months = [
       'Ene',
       'Feb',
@@ -224,11 +208,7 @@ class _CustomDateTimePickerState extends State<CustomDateTimePicker> {
 
     final dayStr = days[date.weekday - 1];
     final monthStr = months[date.month - 1];
-
-    final hourStr = hour.toString().padLeft(2, '0');
-    final minStr = minute.toString().padLeft(2, '0');
-
-    return "$dayStr, ${date.day} $monthStr - $hourStr:$minStr";
+    return "$dayStr, ${date.day} $monthStr";
   }
 
   String _formatTime(int hour, int minute) {
