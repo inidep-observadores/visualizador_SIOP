@@ -219,4 +219,40 @@ class DataFileParser {
 
     return data;
   }
+
+  /// Returns a list of unique vessels (name and matricula) found in the data.
+  static List<Map<String, String>> getUniqueVessels(
+    List<Map<String, dynamic>> data,
+  ) {
+    final Set<String> uniqueKeys = {};
+    final List<Map<String, String>> vessels = [];
+
+    for (final row in data) {
+      final nombre = _getStringFromRow(row, 'buque') ?? '';
+      final matricula = _getStringFromRow(row, 'matricula') ?? '';
+
+      if (nombre.isEmpty && matricula.isEmpty) continue;
+
+      final key = '${nombre.toLowerCase()}|${matricula.toLowerCase()}';
+      if (!uniqueKeys.contains(key)) {
+        uniqueKeys.add(key);
+        vessels.add({'nombre': nombre, 'matricula': matricula});
+      }
+    }
+
+    return vessels;
+  }
+
+  static String? _getStringFromRow(
+    Map<String, dynamic> row,
+    String columnName,
+  ) {
+    final normalizedTarget = columnName.trim().toLowerCase();
+    final matchedKey = row.keys.firstWhere(
+      (key) => key.trim().toLowerCase() == normalizedTarget,
+      orElse: () => '',
+    );
+    if (matchedKey.isEmpty) return null;
+    return row[matchedKey]?.toString().trim();
+  }
 }

@@ -8,7 +8,7 @@
 - **Simulación y Reproducción:** Timeline interactivo que permite animar la posición del buque, con controles de velocidad, play/pausa y navegación paso a paso.
 - **Detección Automática de Etapas:** Algoritmo inteligente que identifica automáticamente los viajes o etapas de pesca basándose en el comportamiento de la velocidad y el posicionamiento.
 - **Filtro Temporal Avanzado:** Slider de rango de fechas que permite aislar periodos específicos de navegación para un análisis detallado.
-- **Soporte Multiformato:** Carga y procesamiento automático de archivos **Excel (.xlsx)** y **CSV**.
+- **Soporte Multiformato Inteligente:** Carga de archivos **Excel (.xlsx)** y **CSV** con detección automática de buques. Soporta archivos con múltiples embarcaciones, separando y asociando los datos automáticamente.
 - **Panel de Información Detallada:** Visualización en tiempo real de coordenadas (GGº MM.MMM'), rumbo, velocidad y datos del buque.
 - **Gestión de Capas:** Control total sobre la visibilidad de los puntos de posición, la trayectoria y áreas geográficas específicas.
 

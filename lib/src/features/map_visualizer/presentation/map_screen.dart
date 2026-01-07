@@ -11,6 +11,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/application/providers.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/domain/vessel.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/application/geojson_service.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/data/services/excel_parser.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/custom_grid_layer.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
 import 'package:intl/intl.dart';
@@ -307,23 +308,29 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _markerAnimController.forward(from: 0.0);
   }
 
-  Future<bool?> _showBatchConfirmDialog(int count) {
+  Future<bool?> _showBatchConfirmDialog(
+    int count, {
+    bool isMultiVesselFile = false,
+  }) {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.cloud_upload_outlined, color: Colors.indigoAccent),
-            SizedBox(width: 12),
-            Text('Confirmar Carga'),
+            const Icon(Icons.cloud_upload_outlined, color: Colors.indigoAccent),
+            const SizedBox(width: 12),
+            Text(isMultiVesselFile ? 'Importación Masiva' : 'Confirmar Carga'),
           ],
         ),
         content: Text(
-          'Se han seleccionado $count archivos.\n\n'
-          'Los datos se guardarán en la base de datos local para acceso futuro y '
-          'no se mostrarán en el mapa de inmediato.\n\n'
-          '¿Desea iniciar la carga masiva?',
+          isMultiVesselFile
+              ? 'Este archivo contiene datos de $count buques distintos.\n\n'
+                    'Se procesará como una carga masiva y los datos se guardarán directamente en la base de datos.'
+              : 'Se han seleccionado $count archivos.\n\n'
+                    'Los datos se guardarán en la base de datos local para acceso futuro y '
+                    'no se mostrarán en el mapa de inmediato.\n\n'
+                    '¿Desea iniciar la carga masiva?',
         ),
         actions: [
           TextButton(
@@ -376,7 +383,32 @@ class _MapScreenState extends ConsumerState<MapScreen>
         return;
       }
 
-      ref.read(excelDataProvider.notifier).loadFromFile(path);
+      try {
+        // Pre-parse to check if there are multiple vessels
+        final data = await DataFileParser.parseFile(path);
+        final vessels = DataFileParser.getUniqueVessels(data);
+
+        if (vessels.length > 1) {
+          // Detect multiple vessels in a single file -> Batch flow
+          if (!mounted) return;
+          final confirmed = await _showBatchConfirmDialog(
+            vessels.length,
+            isMultiVesselFile: true,
+          );
+          if (confirmed != true || !mounted) return;
+
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => _BatchImportDialog(filePaths: [path]),
+          );
+        } else {
+          // Standard single vessel flow
+          ref.read(excelDataProvider.notifier).loadFromFile(path);
+        }
+      } catch (e) {
+        _showErrorSnackBar('Error al procesar el archivo: $e');
+      }
     } else {
       // Multiple files flow: Batch process with custom loader
       if (!mounted) return;

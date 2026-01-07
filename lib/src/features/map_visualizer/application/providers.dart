@@ -33,31 +33,38 @@ class ExcelData extends _$ExcelData {
     final data = await DataFileParser.parseFile(path);
     if (data.isEmpty) return;
 
-    final repo = ref.read(vesselRepositoryProvider);
-    final firstRow = data.first;
-    final nombre = _getStringFromRow(firstRow, 'buque') ?? 'Desconocido';
-    final matricula = _getStringFromRow(firstRow, 'matricula') ?? 'S/N';
-
-    final vessel = await repo.getOrCreateVessel(nombre, matricula);
-    final positions = _mapPositions(data, vessel.id!);
-
-    await repo.insertPositions(positions);
-    ref.invalidate(dbVesselsProvider);
+    await _saveDataToDb(data);
   }
 
   Future<void> saveCurrentToDb() async {
     final data = state.value;
     if (data == null || data.isEmpty) return;
 
+    await _saveDataToDb(data);
+  }
+
+  Future<void> _saveDataToDb(List<Map<String, dynamic>> data) async {
     final repo = ref.read(vesselRepositoryProvider);
-    final firstRow = data.first;
-    final nombre = _getStringFromRow(firstRow, 'buque') ?? 'Desconocido';
-    final matricula = _getStringFromRow(firstRow, 'matricula') ?? 'S/N';
+    final vessels = DataFileParser.getUniqueVessels(data);
 
-    final vessel = await repo.getOrCreateVessel(nombre, matricula);
-    final positions = _mapPositions(data, vessel.id!);
+    for (final v in vessels) {
+      final nombre = v['nombre'] ?? 'Desconocido';
+      final matricula = v['matricula'] ?? 'S/N';
 
-    await repo.insertPositions(positions);
+      final vessel = await repo.getOrCreateVessel(nombre, matricula);
+
+      // Filter data for this specific vessel
+      final vesselData = data.where((row) {
+        final rowNombre = _getStringFromRow(row, 'buque') ?? '';
+        final rowMatricula = _getStringFromRow(row, 'matricula') ?? '';
+        return rowNombre.toLowerCase() == nombre.toLowerCase() &&
+            rowMatricula.toLowerCase() == matricula.toLowerCase();
+      }).toList();
+
+      final positions = _mapPositions(vesselData, vessel.id!);
+      await repo.insertPositions(positions);
+    }
+
     ref.invalidate(dbVesselsProvider);
   }
 

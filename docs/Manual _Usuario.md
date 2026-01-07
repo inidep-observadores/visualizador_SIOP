@@ -16,7 +16,10 @@ Existen tres formas de cargar información en la aplicación:
 Puede simplemente **arrastrar sus archivos** directamente desde su explorador de archivos y soltarlos sobre cualquier parte del mapa. La aplicación reconocerá automáticamente los datos.
 
 ### C. Carga Múltiple y Masiva
-Si selecciona o arrastra **muchos archivos a la vez**, el sistema le preguntará si desea realizar una "Carga Masiva". Esto guardará toda la información en la base de datos de la aplicación para que pueda consultarla más tarde sin necesidad de volver a buscar los archivos originales.
+Si selecciona o arrastra **muchos archivos a la vez**, o si carga un **único archivo que contiene registros de más de un buque**, el sistema activará el flujo de "Importación Masiva". 
+
+*   **Detección inteligente**: El sistema analiza el contenido antes de procesarlo. Si detecta datos de distintos buques, le informará la cantidad de embarcaciones encontradas.
+*   **Guardado directo**: En este modo, la información se guarda automáticamente en la base de datos para garantizar que cada registro quede asociado al buque correspondiente.
 
 ---
 

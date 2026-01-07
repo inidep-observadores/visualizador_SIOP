@@ -30,6 +30,7 @@ La fuente de verdad es un archivo .xlsx. El sistema debe ser capaz de mapear y n
 * **REQ-01.2:** El sistema debe validar que el archivo contenga las columnas obligatorias definidas en el diccionario de datos. En caso contrario, debe mostrar un error explícito indicando qué columnas faltan.  
 * **REQ-01.3:** El sistema debe ordenar automáticamente los registros de forma cronológica ascendente (del más antiguo al más reciente) basándose en la columna Fecha, independientemente del orden original en el Excel.  
 * **REQ-01.4:** El parsing debe ser robusto ante celdas vacías en campos no críticos. Si falta Latitud/Longitud/Fecha, el registro completo debe ser descartado y reportado en un log de advertencia, pero no debe detener la carga.
+* **REQ-01.5 (Novedad):** El sistema debe soportar archivos que contienen datos de múltiples buques. Debe identificar cada buque de forma única (nombre + matrícula) y asegurar que los registros se guarden asociados al buque correcto en la base de datos.
 
 ### **FR-02: Visualización Geoespacial (Mapa)**
 
