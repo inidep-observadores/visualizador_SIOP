@@ -154,7 +154,7 @@ void _parseCellData(Map<String, dynamic> rowData, String key, dynamic value) {
       // Handle numeric dates from Excel.
       // Excel's epoch starts on 1899-12-30.
       final excelEpoch = DateTime.utc(1899, 12, 30);
-      final duration = Duration(days: (value as num).toInt());
+      // excelEpoch.add(Duration(days: (value as num).toInt()));
       // Add fractional day for time?
       // The 'value' from excel might be integer for date only, or double for date+time.
       // (value as num).toDouble() gives days.
@@ -195,11 +195,28 @@ class DataFileParser {
     final bytes = await file.readAsBytes();
     final extension = path.toLowerCase().split('.').last;
 
+    List<Map<String, dynamic>> data;
     if (extension == 'csv') {
-      return compute(parseCsvBytes, bytes);
+      data = await compute(parseCsvBytes, bytes);
     } else {
       // Default to Excel
-      return compute(parseExcelBytes, bytes);
+      data = await compute(parseExcelBytes, bytes);
     }
+
+    if (data.isEmpty) {
+      throw Exception('El archivo está vacío o no tiene datos válidos.');
+    }
+
+    // Validation: Check for mandatory columns
+    final firstRow = data.first;
+    final keys = firstRow.keys.map((k) => k.trim().toLowerCase()).toList();
+
+    if (!keys.contains('buque') || !keys.contains('matricula')) {
+      throw Exception(
+        'Formato inválido. No se encontraron las columnas "Buque" o "Matricula".',
+      );
+    }
+
+    return data;
   }
 }

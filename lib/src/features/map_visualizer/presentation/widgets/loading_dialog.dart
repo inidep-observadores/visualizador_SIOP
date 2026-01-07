@@ -2,14 +2,25 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class LoadingDialog extends StatelessWidget {
-  const LoadingDialog({super.key});
+  final String title;
+  final String message;
 
-  static Future<void> show(BuildContext context) {
+  const LoadingDialog({
+    super.key,
+    this.title = 'Procesando Archivo',
+    this.message = 'Por favor espere mientras analizamos los datos...',
+  });
+
+  static Future<void> show(
+    BuildContext context, {
+    String title = 'Procesando Archivo',
+    String message = 'Por favor espere mientras analizamos los datos...',
+  }) {
     return showDialog(
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.black.withValues(alpha: 0.3),
-      builder: (_) => const LoadingDialog(),
+      builder: (_) => LoadingDialog(title: title, message: message),
     );
   }
 
@@ -53,9 +64,9 @@ class LoadingDialog extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Procesando Archivo',
-                style: TextStyle(
+              Text(
+                title,
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: Colors.black87,
@@ -64,7 +75,7 @@ class LoadingDialog extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Por favor espere mientras analizamos los datos...',
+                message,
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
