@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/data/repositories/vessel_repository.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/data/services/excel_parser.dart';
@@ -24,66 +23,71 @@ class ExcelData extends _$ExcelData {
     state = await AsyncValue.guard(() => DataFileParser.parseFile(path));
   }
 
+  /// Processes a file and saves its content directly to the database
+  /// without updating the current state (visualizer).
+  Future<void> saveFileToDb(String path) async {
+    final data = await DataFileParser.parseFile(path);
+    if (data.isEmpty) return;
+
+    final repo = ref.read(vesselRepositoryProvider);
+    final firstRow = data.first;
+    final nombre = _getStringFromRow(firstRow, 'buque') ?? 'Desconocido';
+    final matricula = _getStringFromRow(firstRow, 'matricula') ?? 'S/N';
+
+    final vessel = await repo.getOrCreateVessel(nombre, matricula);
+    final positions = _mapPositions(data, vessel.id!);
+
+    await repo.insertPositions(positions);
+    ref.invalidate(dbVesselsProvider);
+  }
+
   Future<void> saveCurrentToDb() async {
     final data = state.value;
     if (data == null || data.isEmpty) return;
 
     final repo = ref.read(vesselRepositoryProvider);
+    final firstRow = data.first;
+    final nombre = _getStringFromRow(firstRow, 'buque') ?? 'Desconocido';
+    final matricula = _getStringFromRow(firstRow, 'matricula') ?? 'S/N';
 
-    try {
-      debugPrint(
-        'ExcelData: Iniciando guardado de ${data.length} posiciones...',
-      );
+    final vessel = await repo.getOrCreateVessel(nombre, matricula);
+    final positions = _mapPositions(data, vessel.id!);
 
-      final firstRow = data.first;
-      final nombre = _getStringFromRow(firstRow, 'buque') ?? 'Desconocido';
-      final matricula = _getStringFromRow(firstRow, 'matricula') ?? 'S/N';
+    await repo.insertPositions(positions);
+    ref.invalidate(dbVesselsProvider);
+  }
 
-      debugPrint('ExcelData: Buque: $nombre, Mat: $matricula');
+  List<VesselPosition> _mapPositions(
+    List<Map<String, dynamic>> data,
+    int vesselId,
+  ) {
+    return data
+        .map((row) {
+          DateTime? fecha;
+          final rawFecha = _getRawValueFromRow(row, 'fecha');
 
-      final vessel = await repo.getOrCreateVessel(nombre, matricula);
-      debugPrint('ExcelData: Vessel ID obtenido/creado: ${vessel.id}');
+          if (rawFecha is DateTime) {
+            fecha = rawFecha;
+          } else if (rawFecha != null) {
+            fecha = DateTime.tryParse(rawFecha.toString());
+          }
 
-      final positions = data
-          .map((row) {
-            DateTime? fecha;
-            final rawFecha = _getRawValueFromRow(row, 'fecha');
+          final lat = _parseDouble(_getRawValueFromRow(row, 'latitud'));
+          final lon = _parseDouble(_getRawValueFromRow(row, 'longitud'));
 
-            if (rawFecha is DateTime) {
-              fecha = rawFecha;
-            } else if (rawFecha != null) {
-              fecha = DateTime.tryParse(rawFecha.toString());
-            }
+          if (fecha == null || lat == null || lon == null) return null;
 
-            final lat = _parseDouble(_getRawValueFromRow(row, 'latitud'));
-            final lon = _parseDouble(_getRawValueFromRow(row, 'longitud'));
-
-            if (fecha == null || lat == null || lon == null) return null;
-
-            return VesselPosition(
-              buqueId: vessel.id!,
-              fecha: fecha,
-              latitud: lat,
-              longitud: lon,
-              velocidad: _parseDouble(_getRawValueFromRow(row, 'velocidad')),
-              rumbo: _parseDouble(_getRawValueFromRow(row, 'rumbo')),
-            );
-          })
-          .whereType<VesselPosition>()
-          .toList();
-
-      debugPrint(
-        'ExcelData: Mapeadas ${positions.length} posiciones. Insertando...',
-      );
-      await repo.insertPositions(positions);
-      debugPrint('ExcelData: Guardado exitoso.');
-
-      ref.invalidate(dbVesselsProvider);
-    } catch (e, stack) {
-      debugPrint('ExcelData ERROR al guardar: $e');
-      debugPrint(stack.toString());
-      rethrow;
-    }
+          return VesselPosition(
+            buqueId: vesselId,
+            fecha: fecha,
+            latitud: lat,
+            longitud: lon,
+            velocidad: _parseDouble(_getRawValueFromRow(row, 'velocidad')),
+            rumbo: _parseDouble(_getRawValueFromRow(row, 'rumbo')),
+          );
+        })
+        .whereType<VesselPosition>()
+        .toList();
   }
 
   Future<void> loadFromDb(int vesselId) async {

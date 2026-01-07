@@ -302,52 +302,105 @@ class _MapScreenState extends ConsumerState<MapScreen>
     _markerAnimController.forward(from: 0.0);
   }
 
-  /// Opens the file picker and triggers the data loading process via the provider.
+  Future<bool?> _showBatchConfirmDialog(int count) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.cloud_upload_outlined, color: Colors.indigoAccent),
+            SizedBox(width: 12),
+            Text('Confirmar Carga'),
+          ],
+        ),
+        content: Text(
+          'Se han seleccionado $count archivos.\n\n'
+          'Los datos se guardarán en la base de datos local para acceso futuro y '
+          'no se mostrarán en el mapa de inmediato.\n\n'
+          '¿Desea iniciar la carga masiva?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('CANCELAR'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigoAccent,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('INICIAR CARGA'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickFile() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx', 'csv'],
+        allowMultiple: true, // Allow multiple files!
       );
 
-      if (result != null && result.files.single.path != null) {
-        final path = result.files.single.path!;
-        final extension = result.files.single.extension?.toLowerCase();
+      if (result == null || result.files.isEmpty) return;
+
+      if (result.files.length == 1) {
+        // Single file flow: Load and visualize
+        final path = result.files.first.path!;
+        final extension = result.files.first.extension?.toLowerCase();
 
         if (extension == 'xls') {
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(
-              content: Text(
-                'El formato .xls no está soportado. Por favor use .xlsx o .csv',
-              ),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-            ),
-          );
-          return;
-        }
-
-        if (extension != 'xlsx' && extension != 'csv') {
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Formato de archivo no válido. Solo se permiten .xlsx y .csv',
-              ),
-              backgroundColor: Colors.redAccent,
-              behavior: SnackBarBehavior.floating,
-            ),
+          _showErrorSnackBar(
+            'El formato .xls no está soportado. Use .xlsx o .csv',
           );
           return;
         }
 
         ref.read(excelDataProvider.notifier).loadFromFile(path);
+      } else {
+        // Multiple files flow: Batch process with custom loader
+        final paths = result.files
+            .map((f) => f.path)
+            .whereType<String>()
+            .toList();
+        if (paths.isEmpty) return;
+
+        if (!mounted) return;
+
+        // Ask for confirmation before batch processing
+        final confirmed = await _showBatchConfirmDialog(paths.length);
+        if (confirmed != true || !mounted) return;
+
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => _BatchImportDialog(filePaths: paths),
+        );
       }
     } catch (e) {
       scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Error al seleccionar el archivo: $e')),
+        SnackBar(content: Text('Error al seleccionar archivos: $e')),
       );
     }
+  }
+
+  void _showErrorSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   void _processData(List<Map<String, dynamic>>? data) {
@@ -990,89 +1043,87 @@ class _MapScreenState extends ConsumerState<MapScreen>
             top: 24,
             left: 24,
             child: SizedBox(
-              width: 200, // Reduced width
+              width:
+                  280, // Restaurado ancho para que quepa todo el diseño premium
 
               child: FloatingMapCard(
                 elevation: 2,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header con carga de archivo
+                    // Header premium rediseñado
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Icono distintivo
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.indigoAccent.withAlpha(15),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.directions_boat_rounded,
+                            color: Colors.indigoAccent,
+                            size: 20,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Información del buque
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                'Buque',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.grey[700],
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
                                 shipName == 'N/A'
-                                    ? 'Sin datos'
+                                    ? 'SIN DATOS'
                                     : shipName.toUpperCase(),
                                 style: const TextStyle(
                                   fontSize: 14,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w800,
                                   color: Colors.black87,
+                                  letterSpacing: -0.2,
                                 ),
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
                                 matricula == 'N/A'
-                                    ? ''
-                                    : 'Mat. ${trimMatricula(matricula)}',
+                                    ? 'Cargar o buscar'
+                                    : 'Mat.: ${trimMatricula(matricula)}',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: Colors.grey[800],
+                                  color: Colors.grey[600],
+                                  fontWeight: FontWeight.w500,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        // Acciones rápidas
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            FloatingActionButton.small(
-                              heroTag: null, // Fix Hero collision
+                            _buildCompactAction(
+                              icon: Icons.search_rounded,
                               onPressed: hasVessels
                                   ? () => _showVesselSearch(context)
                                   : null,
-                              elevation: 0,
-                              backgroundColor: hasVessels
-                                  ? Colors.indigoAccent.withValues(alpha: 0.1)
-                                  : Colors.grey.withValues(alpha: 0.1),
-                              foregroundColor: hasVessels
-                                  ? Colors.indigoAccent
-                                  : Colors.grey,
-                              tooltip: hasVessels
-                                  ? 'Buscar buque en base de datos'
-                                  : 'No hay buques en la base de datos',
-                              child: const Icon(Icons.search, size: 18),
+                              color: Colors.indigoAccent,
+                              tooltip: 'Buscar en DB',
+                              enabled: hasVessels,
                             ),
-                            const SizedBox(width: 4),
-                            FloatingActionButton.small(
-                              heroTag: null, // Fix Hero collision
+                            const SizedBox(width: 8),
+                            _buildCompactAction(
+                              icon: Icons.upload_file_rounded,
                               onPressed: isLoading ? null : _pickFile,
-                              elevation: 0,
-                              backgroundColor: Colors.white.withValues(
-                                alpha: 0.5,
-                              ),
-                              foregroundColor: Colors.indigoAccent,
-                              tooltip: 'Cargar archivo de datos',
-                              child: const Icon(
-                                Icons.upload_file_outlined,
-                                size: 18,
-                              ),
+                              color: Colors.indigoAccent,
+                              tooltip: 'Cargar archivo',
+                              enabled: !isLoading,
                             ),
                           ],
                         ),
@@ -2247,6 +2298,29 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return 0.0;
   }
 
+  Widget _buildCompactAction({
+    required IconData icon,
+    required VoidCallback? onPressed,
+    required Color color,
+    required String tooltip,
+    bool enabled = true,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: enabled ? color.withAlpha(20) : Colors.grey.withAlpha(15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: IconButton(
+        icon: Icon(icon, size: 20),
+        onPressed: onPressed,
+        tooltip: tooltip,
+        color: enabled ? color : Colors.grey,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+      ),
+    );
+  }
+
   void _showPersistConfirmation(BuildContext screenContext) {
     showDialog(
       context: screenContext,
@@ -2320,6 +2394,255 @@ class _MapScreenState extends ConsumerState<MapScreen>
       _isLoadingFromDb = true; // Indicar que los datos ya están en la DB
       await ref.read(excelDataProvider.notifier).loadFromDb(vessel.id!);
     }
+  }
+}
+
+class _BatchImportDialog extends ConsumerStatefulWidget {
+  final List<String> filePaths;
+  const _BatchImportDialog({required this.filePaths});
+
+  @override
+  ConsumerState<_BatchImportDialog> createState() => _BatchImportDialogState();
+}
+
+class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
+  final Map<String, String> _statuses = {};
+  bool _isProcessing = true;
+  int _completedCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final p in widget.filePaths) {
+      _statuses[p] = 'Pendiente';
+    }
+    _processFiles();
+  }
+
+  Future<void> _processFiles() async {
+    final notifier = ref.read(excelDataProvider.notifier);
+
+    for (final path in widget.filePaths) {
+      setState(() {
+        _statuses[path] = 'Procesando...';
+      });
+
+      try {
+        await notifier.saveFileToDb(path);
+        if (!mounted) return;
+        setState(() {
+          _statuses[path] = 'Listo';
+          _completedCount++;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _statuses[path] = 'Error: $e';
+          _completedCount++;
+        });
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = widget.filePaths.isEmpty
+        ? 1.0
+        : _completedCount / widget.filePaths.length;
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 450, maxHeight: 550),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withAlpha(20),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    _isProcessing ? Icons.cloud_upload : Icons.check_circle,
+                    color: Colors.blueAccent,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isProcessing
+                            ? 'Procesando Archivos'
+                            : 'Proceso Finalizado',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        'Cargando datos en la base de datos local',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            LinearProgressIndicator(
+              value: progress,
+              backgroundColor: Colors.grey[200],
+              color: Colors.blueAccent,
+              minHeight: 8,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '$_completedCount de ${widget.filePaths.length} completados',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'DETALLE:',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.grey[50],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[200]!),
+                ),
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: widget.filePaths.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final path = widget.filePaths[index];
+                    final fileName = path.split('\\').last.split('/').last;
+                    final status = _statuses[path] ?? '';
+
+                    IconData statusIcon = Icons.more_horiz;
+                    Color statusColor = Colors.grey;
+
+                    if (status == 'Procesando...') {
+                      statusColor = Colors.blue;
+                    } else if (status == 'Listo') {
+                      statusIcon = Icons.check_circle;
+                      statusColor = Colors.green;
+                    } else if (status.startsWith('Error')) {
+                      statusIcon = Icons.error;
+                      statusColor = Colors.red;
+                    }
+
+                    return ListTile(
+                      dense: true,
+                      leading: status == 'Procesando...'
+                          ? _LoadingIcon(color: statusColor)
+                          : Icon(statusIcon, color: statusColor, size: 20),
+                      title: Text(
+                        fileName,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        status,
+                        style: TextStyle(
+                          color: statusColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 11,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton(
+                onPressed: _isProcessing ? null : () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey[300],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 0,
+                ),
+                child: Text(_isProcessing ? 'PROCESANDO...' : 'CERRAR'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LoadingIcon extends StatefulWidget {
+  final Color color;
+  const _LoadingIcon({required this.color});
+
+  @override
+  State<_LoadingIcon> createState() => _LoadingIconState();
+}
+
+class _LoadingIconState extends State<_LoadingIcon>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return RotationTransition(
+      turns: _controller,
+      child: const Icon(Icons.sync, color: Colors.blue, size: 20),
+    );
   }
 }
 
