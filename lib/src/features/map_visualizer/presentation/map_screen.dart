@@ -407,6 +407,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
   void _processData(List<Map<String, dynamic>>? data) {
     if (data == null) {
       if (mounted) {
+        _stopPlayback();
         setState(() {
           _allPoints = [];
           _filteredPoints = [];
@@ -414,8 +415,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
           _maxDate = null;
           _currentRangeValues = null;
           _currentSliderValue = null;
-          _currentSliderValue = null;
           _detectedTrips = [];
+          _animatedMarkerPosition = null;
+          _markerTargetPosition = null;
+          _markerStartPos = null;
+          _markerEndPos = null;
         });
       }
       return;
@@ -718,16 +722,14 @@ class _MapScreenState extends ConsumerState<MapScreen>
       next.when(
         data: (data) {
           LoadingDialog.hide(context);
-          if (data != null) {
-            _processData(data);
+          _processData(data);
 
-            // Confirmar guardado solo si no proviene de la DB
-            if (!_isLoadingFromDb) {
-              _showPersistConfirmation(context);
-            }
-            // Reset flag
-            _isLoadingFromDb = false;
+          // Confirmar guardado solo si no proviene de la DB y hay datos
+          if (data != null && !_isLoadingFromDb) {
+            _showPersistConfirmation(context);
           }
+          // Reset flag
+          _isLoadingFromDb = false;
         },
         error: (error, stackTrace) {
           LoadingDialog.hide(context);
@@ -847,6 +849,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                 },
                 hitTestBehavior: HitTestBehavior.translucent,
                 child: FlutterMap(
+                  key: ValueKey(
+                    'map_${_allPoints.hashCode}_${_detectedTrips.length}',
+                  ),
                   mapController: _mapController,
                   options: MapOptions(
                     initialCenter: mapCenter,
@@ -1059,8 +1064,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
               top: 24,
               left: 24,
               child: SizedBox(
-                width:
-                    280, // Restaurado ancho para que quepa todo el diseño premium
+                width: 200,
 
                 child: FloatingMapCard(
                   elevation: 2,
@@ -1119,29 +1123,51 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               ],
                             ),
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Acciones rápidas en nueva fila
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Expanded(
+                            child: _buildCompactAction(
+                              icon: Icons.search_rounded,
+                              onPressed: hasVessels
+                                  ? () => _showVesselSearch(context)
+                                  : null,
+                              color: Colors.indigoAccent,
+                              tooltip: 'Buscar en DB',
+                              enabled: hasVessels,
+                            ),
+                          ),
                           const SizedBox(width: 8),
-                          // Acciones rápidas
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _buildCompactAction(
-                                icon: Icons.search_rounded,
-                                onPressed: hasVessels
-                                    ? () => _showVesselSearch(context)
-                                    : null,
-                                color: Colors.indigoAccent,
-                                tooltip: 'Buscar en DB',
-                                enabled: hasVessels,
-                              ),
-                              const SizedBox(width: 8),
-                              _buildCompactAction(
-                                icon: Icons.upload_file_rounded,
-                                onPressed: isLoading ? null : _pickFile,
-                                color: Colors.indigoAccent,
-                                tooltip: 'Cargar archivo',
-                                enabled: !isLoading,
-                              ),
-                            ],
+                          Expanded(
+                            child: _buildCompactAction(
+                              icon: Icons.upload_file_rounded,
+                              onPressed: isLoading ? null : _pickFile,
+                              color: Colors.indigoAccent,
+                              tooltip: 'Cargar archivo',
+                              enabled: !isLoading,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildCompactAction(
+                              icon: Icons.delete_sweep_rounded,
+                              onPressed:
+                                  (isLoading || excelDataState.value == null)
+                                  ? null
+                                  : () {
+                                      ref
+                                          .read(excelDataProvider.notifier)
+                                          .clearData();
+                                    },
+                              color: Colors.redAccent,
+                              tooltip: 'Limpiar mapa',
+                              enabled:
+                                  !isLoading && excelDataState.value != null,
+                            ),
                           ),
                         ],
                       ),
@@ -2183,6 +2209,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     Color accentColor,
   ) {
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       decoration: BoxDecoration(
         color: bgColor,
@@ -2190,9 +2217,12 @@ class _MapScreenState extends ConsumerState<MapScreen>
         border: Border.all(color: accentColor.withValues(alpha: 0.2)),
       ),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Text(
             label,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 10,
               fontWeight: FontWeight.bold,
@@ -2202,6 +2232,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
           const SizedBox(height: 4),
           Text(
             value,
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.bold,

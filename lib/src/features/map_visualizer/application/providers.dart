@@ -23,6 +23,10 @@ class ExcelData extends _$ExcelData {
     state = await AsyncValue.guard(() => DataFileParser.parseFile(path));
   }
 
+  void clearData() {
+    state = const AsyncValue.data(null);
+  }
+
   /// Processes a file and saves its content directly to the database
   /// without updating the current state (visualizer).
   Future<void> saveFileToDb(String path) async {
