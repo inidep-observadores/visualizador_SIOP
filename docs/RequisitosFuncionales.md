@@ -61,6 +61,18 @@ La fuente de verdad es un archivo .xlsx. El sistema debe ser capaz de mapear y n
 * **REQ-04.2:** La aplicación debe iniciar con un tamaño predeterminado (ej. 1280x720) y permitir redimensionamiento, respetando un tamaño mínimo de 800x600 px para evitar roturas de layout.  
 * **REQ-04.3:** Panel lateral (Sidebar) colapsable o fijo que muestre los metadatos estáticos del viaje: Nombre del Buque, Matrícula, Fecha Inicio, Fecha Fin, Velocidad Promedio y Distancia Total Recorrida (cálculo opcional).
 
+### **FR-05: Persistencia de Datos (SQLite)**
+
+* **REQ-05.1:** El sistema debe contar con una base de datos local SQLite para persistir los datos importados.
+* **REQ-05.2 (Esquema):** Se deben implementar dos tablas principales:
+    * `buques`: Almacena `uuid` (PK), `nombre` y `matricula` (UNIQUE).
+    * `posiciones`: Almacena las posiciones vinculadas por `buque_id`, con `fecha` como clave única por buque (UNIQUE(`buque_id`, `fecha`)).
+* **REQ-05.3 (Flujo de Persistencia):** Al cargar un archivo, se debe preguntar al usuario si desea guardar los datos en la base de datos además de visualizarlos.
+* **REQ-05.4 (Eficiencia):** La inserción de datos debe ser optimizada (batch inserts) y evitar duplicados basándose en las restricciones de unicidad (Insert if not exists).
+* **REQ-05.5 (Visualización desde DB):** El usuario debe poder optar por visualizar datos ya existentes en la base de datos.
+* **REQ-05.6 (Búsqueda):** Se debe proveer un control de búsqueda con autocompletado para seleccionar buques presentes en la base de datos.
+* **REQ-05.7 (Consistencia):** Al cargar datos desde la DB, la funcionalidad del mapa, línea de tiempo y paneles informativos debe ser idéntica a la carga de archivos.
+
 ## **4\. Requisitos No Funcionales (NFR)**
 
 ### **NFR-01: Rendimiento**

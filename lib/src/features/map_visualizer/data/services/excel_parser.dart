@@ -154,7 +154,7 @@ void _parseCellData(Map<String, dynamic> rowData, String key, dynamic value) {
       // Handle numeric dates from Excel.
       // Excel's epoch starts on 1899-12-30.
       final excelEpoch = DateTime.utc(1899, 12, 30);
-      final duration = Duration(days: (value as num).toInt());
+      // excelEpoch.add(Duration(days: (value as num).toInt()));
       // Add fractional day for time?
       // The 'value' from excel might be integer for date only, or double for date+time.
       // (value as num).toDouble() gives days.

@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/application/providers.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/domain/vessel.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/application/geojson_service.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/custom_grid_layer.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/floating_map_card.dart';
@@ -122,6 +123,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
     Colors.indigo,
     Colors.lime,
   ];
+
+  bool _isLoadingFromDb = false;
 
   @override
   void initState() {
@@ -557,181 +560,7 @@ class _MapScreenState extends ConsumerState<MapScreen>
     return trips;
   }
 
-  List<_Trip> _detectTripsMethod2(List<MapPoint> points) {
-    if (points.length < 6) return [];
-
-    List<_Trip> trips = [];
-    int? pendingDepartureIndex;
-
-    // New V2 Logic
-    // Departure: 5 points with speed 0, followed by >=1 point with speed > 0
-    // Arrival:   >=1 point with speed > 0, followed by 5 points with speed 0
-    // (Essentially looking for the transition 0,0,0,0,0 -> >0 and >0 -> 0,0,0,0,0)
-
-    for (int i = 0; i <= points.length - 6; i++) {
-      // We look at a window of 6 points to see the transition
-      // [0, 1, 2, 3, 4] -> [5]
-
-      // Check for validity first
-      bool allValid = true;
-      for (int j = 0; j < 6; j++) {
-        if (points[i + j].speed == null || points[i + j].timestamp == null) {
-          allValid = false;
-          break;
-        }
-      }
-      if (!allValid) continue;
-
-      bool first5Zero = true;
-      for (int j = 0; j < 5; j++) {
-        if (points[i + j].speed! >= 0.5) {
-          first5Zero = false;
-          break;
-        }
-      }
-
-      bool lastGtZero = points[i + 5].speed! > 1.0;
-
-      // Check Departure condition: 0,0,0,0,0 -> >0
-      // The departure point is the first point with speed > 0, which is index i+5
-      if (first5Zero && lastGtZero) {
-        if (pendingDepartureIndex == null) {
-          pendingDepartureIndex = i + 5;
-        } else {
-          // If we already have a pending departure, we update it?
-          // Or we prioritize the first one found?
-          // If we find another departure without an arrival, it might mean the previous "trip" was just a short movement.
-          // Let's reset start to this new one, assuming the previous one wasn't a real trip.
-          pendingDepartureIndex = i + 5;
-        }
-      }
-
-      // Check Arrival condition: >0 -> 0,0,0,0,0
-      // We need to look at window: [i] is > 0, [i+1...i+5] are 0
-      // But for that we need a different loop structure or just check both patterns
-      // Let's check "Last 5 Zero" and "First > 0"
-
-      bool last5Zero = true;
-      for (int j = 1; j < 6; j++) {
-        if (points[i + j].speed! >= 0.3) {
-          last5Zero = false;
-          break;
-        }
-      }
-      bool firstGtZero = points[i].speed! > 0.3;
-
-      // Arrival Condition: >0 -> 0,0,0,0,0
-      // The arrival point is the last point with speed > 0, which is index i
-      if (firstGtZero && last5Zero) {
-        if (pendingDepartureIndex != null) {
-          final endIndex = i;
-
-          // Validate Minimum Duration (5 hours)
-          final startPoint = points[pendingDepartureIndex];
-          final endPoint = points[endIndex];
-          final duration = endPoint.timestamp!.difference(
-            startPoint.timestamp!,
-          );
-
-          if (duration.inHours >= 5) {
-            final colorIndex = trips.length % _tripColors.length;
-
-            // Indices might be inverted if we scanned weirdly, but here i > pendingDepartureIndex usually
-            // Wait, if pendingDepartureIndex = i+5 (from previous steps), and current i (arrival) is later
-            // We need to ensure valid sublist ranges
-
-            if (endIndex > pendingDepartureIndex) {
-              final tripPoints = points.sublist(
-                pendingDepartureIndex,
-                endIndex + 1,
-              );
-              final pathPoints = tripPoints.map((p) => p.position).toList();
-
-              final trip = _Trip(
-                startPoint: startPoint,
-                endPoint: endPoint,
-                pathPoints: pathPoints,
-                tripPoints: tripPoints,
-                color: _tripColors[colorIndex],
-              );
-              trips.add(trip);
-              pendingDepartureIndex = null;
-            }
-          } else {
-            // Trip too short, discard it.
-            pendingDepartureIndex = null;
-          }
-        }
-      }
-    }
-    return trips;
-  }
-
   // Legacy detection logic (V0) - Unused but preserved
-  List<_Trip> _detectTripsLegacy(List<MapPoint> points) {
-    if (points.length < 6) return [];
-
-    List<_Trip> trips = [];
-    int? pendingDepartureIndex;
-
-    for (int i = 0; i <= points.length - 6; i++) {
-      // Window of 6 points
-      final p0 = points[i];
-      final p1 = points[i + 1];
-      final p2 = points[i + 2];
-      final p3 = points[i + 3];
-      final p4 = points[i + 4];
-      final p5 = points[i + 5];
-
-      if (p0.speed == null ||
-          p1.speed == null ||
-          p2.speed == null ||
-          p3.speed == null ||
-          p4.speed == null ||
-          p5.speed == null ||
-          p0.timestamp == null ||
-          p3.timestamp == null) {
-        continue;
-      }
-
-      bool isDeparture =
-          (p0.speed == 0 && p1.speed == 0 && p2.speed == 0) &&
-          (p3.speed! > 0 && p4.speed! > 0 && p5.speed! > 0);
-
-      bool isArrival =
-          (p0.speed! > 0 && p1.speed! > 0 && p2.speed! > 0) &&
-          (p3.speed == 0 && p4.speed == 0 && p5.speed == 0);
-
-      if (isDeparture) {
-        if (pendingDepartureIndex == null) {
-          pendingDepartureIndex = i + 3;
-        } else {
-          pendingDepartureIndex = i + 3;
-        }
-      } else if (isArrival) {
-        if (pendingDepartureIndex != null) {
-          final colorIndex = trips.length % _tripColors.length;
-          final endIndex = i + 3;
-          final tripPoints = points.sublist(
-            pendingDepartureIndex,
-            endIndex + 1,
-          );
-          final pathPoints = tripPoints.map((p) => p.position).toList();
-
-          final trip = _Trip(
-            startPoint: points[pendingDepartureIndex],
-            endPoint: points[endIndex],
-            pathPoints: pathPoints,
-            tripPoints: tripPoints,
-            color: _tripColors[colorIndex],
-          );
-          trips.add(trip);
-          pendingDepartureIndex = null;
-        }
-      }
-    }
-    return trips;
-  }
 
   void _filterPoints() {
     if (_currentRangeValues == null || _minDate == null || _maxDate == null) {
@@ -823,6 +652,8 @@ class _MapScreenState extends ConsumerState<MapScreen>
   Widget build(BuildContext context) {
     final excelDataState = ref.watch(excelDataProvider);
     final geoJsonAsync = ref.watch(geoJsonServiceProvider);
+    final vesselsAsync = ref.watch(dbVesselsProvider);
+    final hasVessels = vesselsAsync.value?.isNotEmpty ?? false;
 
     debugPrint('MapScreen build: GeoJson State: $geoJsonAsync');
 
@@ -835,13 +666,13 @@ class _MapScreenState extends ConsumerState<MapScreen>
           LoadingDialog.hide(context);
           if (data != null) {
             _processData(data);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${data.length} filas cargadas con éxito.'),
-                behavior: SnackBarBehavior.floating,
-                width: 400,
-              ),
-            );
+
+            // Confirmar guardado solo si no proviene de la DB
+            if (!_isLoadingFromDb) {
+              _showPersistConfirmation(context);
+            }
+            // Reset flag
+            _isLoadingFromDb = false;
           }
         },
         error: (error, stackTrace) {
@@ -1208,16 +1039,42 @@ class _MapScreenState extends ConsumerState<MapScreen>
                             ],
                           ),
                         ),
-                        FloatingActionButton.small(
-                          onPressed: isLoading ? null : _pickFile,
-                          elevation: 0,
-                          backgroundColor: Colors.white.withValues(alpha: 0.5),
-                          foregroundColor: Colors.indigoAccent,
-                          tooltip: 'Cargar archivo de datos',
-                          child: const Icon(
-                            Icons.upload_file_outlined,
-                            size: 18,
-                          ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FloatingActionButton.small(
+                              heroTag: null, // Fix Hero collision
+                              onPressed: hasVessels
+                                  ? () => _showVesselSearch(context)
+                                  : null,
+                              elevation: 0,
+                              backgroundColor: hasVessels
+                                  ? Colors.indigoAccent.withValues(alpha: 0.1)
+                                  : Colors.grey.withValues(alpha: 0.1),
+                              foregroundColor: hasVessels
+                                  ? Colors.indigoAccent
+                                  : Colors.grey,
+                              tooltip: hasVessels
+                                  ? 'Buscar buque en base de datos'
+                                  : 'No hay buques en la base de datos',
+                              child: const Icon(Icons.search, size: 18),
+                            ),
+                            const SizedBox(width: 4),
+                            FloatingActionButton.small(
+                              heroTag: null, // Fix Hero collision
+                              onPressed: isLoading ? null : _pickFile,
+                              elevation: 0,
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.5,
+                              ),
+                              foregroundColor: Colors.indigoAccent,
+                              tooltip: 'Cargar archivo de datos',
+                              child: const Icon(
+                                Icons.upload_file_outlined,
+                                size: 18,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1544,8 +1401,9 @@ class _MapScreenState extends ConsumerState<MapScreen>
                                   Tooltip(
                                     message: 'Rango de fechas',
                                     child: OutlinedButton.icon(
-                                      onPressed:
-                                          isRangeEnabled ? _pickDateRange : null,
+                                      onPressed: isRangeEnabled
+                                          ? _pickDateRange
+                                          : null,
                                       icon: const Icon(
                                         Icons.date_range,
                                         size: 16,
@@ -2387,6 +2245,211 @@ class _MapScreenState extends ConsumerState<MapScreen>
     if (index != -1) return index.toDouble();
 
     return 0.0;
+  }
+
+  void _showPersistConfirmation(BuildContext screenContext) {
+    showDialog(
+      context: screenContext,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Guardar en Base de Datos'),
+        content: const Text(
+          '¿Desea guardar los datos cargados en la base de datos local para acceso rápido futuro?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('NO'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              // 1. Close the alert dialog using its own context
+              Navigator.pop(dialogContext);
+
+              // 2. Show the loading dialog using the screen context
+              debugPrint('MapScreen: Mostrando diálogo de guardado...');
+              LoadingDialog.show(screenContext, message: 'Guardando datos...');
+
+              try {
+                // 3. Perform the save operation
+                await ref.read(excelDataProvider.notifier).saveCurrentToDb();
+
+                debugPrint('MapScreen: Guardado finalizado en el provider.');
+
+                // 4. Hide the loading dialog using the screen context
+                if (screenContext.mounted) {
+                  debugPrint('MapScreen: Ocultando diálogo de carga...');
+                  LoadingDialog.hide(screenContext);
+                  ScaffoldMessenger.of(screenContext).showSnackBar(
+                    const SnackBar(
+                      content: Text('Datos guardados correctamente.'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                } else {
+                  debugPrint(
+                    'MapScreen WARNING: screenContext no está montado al finalizar.',
+                  );
+                }
+              } catch (e) {
+                debugPrint('MapScreen ERROR al guardar: $e');
+                if (screenContext.mounted) {
+                  LoadingDialog.hide(screenContext);
+                  ScaffoldMessenger.of(screenContext).showSnackBar(
+                    SnackBar(
+                      content: Text('Error al guardar: $e'),
+                      backgroundColor: Colors.redAccent,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('SÍ, GUARDAR'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showVesselSearch(BuildContext context) async {
+    final vessel = await showDialog<Vessel?>(
+      context: context,
+      builder: (context) => const _VesselSearchDialog(),
+    );
+
+    if (vessel != null && context.mounted) {
+      _isLoadingFromDb = true; // Indicar que los datos ya están en la DB
+      await ref.read(excelDataProvider.notifier).loadFromDb(vessel.id!);
+    }
+  }
+}
+
+class _VesselSearchDialog extends ConsumerStatefulWidget {
+  const _VesselSearchDialog();
+
+  @override
+  ConsumerState<_VesselSearchDialog> createState() =>
+      _VesselSearchDialogState();
+}
+
+class _VesselSearchDialogState extends ConsumerState<_VesselSearchDialog> {
+  final TextEditingController _controller = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final vesselsAsync = ref.watch(dbVesselsProvider);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Container(
+        constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.indigoAccent.withAlpha(20),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.directions_boat,
+                    color: Colors.indigoAccent,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Buscar en Base de Datos',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Nombre o matrícula...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _query.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () {
+                          _controller.clear();
+                          setState(() => _query = '');
+                        },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade300),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey.shade200),
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+              ),
+              onChanged: (val) => setState(() => _query = val),
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: vesselsAsync.when(
+                data: (vessels) {
+                  final filtered = vessels.where((v) {
+                    final q = _query.toLowerCase();
+                    return v.nombre.toLowerCase().contains(q) ||
+                        v.matricula.toLowerCase().contains(q);
+                  }).toList();
+
+                  if (filtered.isEmpty) {
+                    return const Center(
+                      child: Text('No hay buques que coincidan.'),
+                    );
+                  }
+
+                  return ListView.separated(
+                    itemCount: filtered.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final v = filtered[index];
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                        ),
+                        title: Text(
+                          v.nombre.toUpperCase(),
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        subtitle: Text('Matrícula: ${v.matricula}'),
+                        onTap: () => Navigator.pop(context, v),
+                      );
+                    },
+                  );
+                },
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, s) => Center(child: Text('Error: $e')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
