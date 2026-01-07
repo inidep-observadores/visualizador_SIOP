@@ -1,0 +1,21 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "description": "Polilínea conectando los 4 puntos"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [-63.0, -54.0],
+          [-63.0, -55.0],
+          [-60.0, -55.0],
+          [-60.0, -54.0],
+          [-63.0, -54.0]
+        ]
+      }
+    }
+  ]
+}
