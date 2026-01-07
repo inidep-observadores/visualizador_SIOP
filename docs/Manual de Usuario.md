@@ -1,90 +1,59 @@
 # Manual de Usuario - Visualizador SIOP
 
-El Visualizador SIOP es una herramienta diseñada para la visualización interactiva de datos de posicionamiento de buques, permitiendo el análisis de trayectorias, detección automática de mareas de pesca (etapas) y reproducción temporal de la navegación.
+El Visualizador SIOP es una herramienta diseñada para la visualización interactiva de datos de posicionamiento de buques, permitiendo el análisis de trayectorias, detección automática de viajes y reproducción temporal de la navegación.
+
+---
 
 ## 1. Carga de Datos
 
-Para comenzar a utilizar la aplicación, es necesario cargar un archivo de datos.
+Existen tres formas de cargar información en la aplicación:
 
-### Formatos Soportados
-La aplicación soporta los siguientes formatos:
-- **Excel (.xlsx)**
-- **Valores Separados por Comas (.csv)**
+### A. Botón de Carga
+1. Haga clic en el ícono de la **alfombra/carpeta** en la tarjeta superior izquierda.
+2. Seleccione uno o varios archivos **Excel (.xlsx)** o **CSV** de su computadora.
 
-### Estructura de Datos Esperada
-El archivo debe contener columnas que incluyan la siguiente información (el sistema intenta detectar automáticamente los nombres de las columnas):
-- **Fecha y Hora**: `fechahora`, `fecha`, `date`, `time`, `timestamp`.
-- **Posición**: `latitud`, `longitud`.
-- **Velocidad** (Opcional): `velocidad` (en nudos).
-- **Rumbo** (Opcional): `rumbo` (en grados).
-- **Identificación** (Opcional): `buque`, `matricula`.
+### B. Arrastrar y Soltar (Novedad)
+Puede simplemente **arrastrar sus archivos** directamente desde su explorador de archivos y soltarlos sobre cualquier parte del mapa. La aplicación reconocerá automáticamente los datos.
 
-### Procedimiento
-1. En la tarjeta de información (esquina superior izquierda), haga clic en el botón de "Carga" (ícono de carpeta/subida).
-2. Seleccione el archivo `.xlsx` o `.csv` desde su explorador de archivos.
-3. El sistema procesará los datos y mostrará una notificación con la cantidad de registros cargados.
+### C. Carga Múltiple y Masiva
+Si selecciona o arrastra **muchos archivos a la vez**, el sistema le preguntará si desea realizar una "Carga Masiva". Esto guardará toda la información en la base de datos de la aplicación para que pueda consultarla más tarde sin necesidad de volver a buscar los archivos originales.
 
 ---
 
 ## 2. Interfaz Principal
 
 ### A. Tarjeta de Información (Izquierda Superior)
-Esta tarjeta muestra información estática del buque y dinámica del punto seleccionado en el tiempo actual.
-
-*   **Cabecera**: Nombre del buque y matrícula (si están disponibles en el archivo). Botón de carga de nuevos archivos.
-*   **Posición Actual**: Muestra los datos precisos del punto seleccionado en la línea de tiempo:
-    *   Latitud y Longitud (formato GGº MM.MMM').
-    *   Fecha y Hora local.
-    *   Velocidad (nudos) y Rumbo (grados).
-    *   *Nota*: Si no hay un punto seleccionado, mostrará "Seleccione un punto".
-*   **Capas Visibles**: Interruptores para activar/desactivar elementos en el mapa:
-    *   **Puntos totales**: Muestra todos los puntos de posición cargados.
-    *   **Trayectoria total**: Muestra una línea continua conectando todos los puntos.
-    *   **Áreas de Vieira / Centolla**: Muestra polígonos de zonas de veda o manejo específico (si están configurados).
+Muestra los datos del buque y del punto exacto donde se encuentra el marcador en el mapa.
+*   **Lupa**: Permite buscar buques que ya han sido guardados previamente en la base de datos.
+*   **Tacho de basura**: Limpia el mapa actual para empezar una nueva visualización.
+*   **Datos en tiempo real**: Latitud, longitud, fecha, hora, velocidad (en nudos) y rumbo.
+*   **Capas Visibles**: Interruptores para mostrar u ocultar los puntos totales, la trayectoria completa o áreas de pesca específicas (Viedma, Centolla).
 
 ### B. Lista de Etapas (Derecha Superior)
-El sistema detecta automáticamente "Etapas" o viajes de pesca basándose en el comportamiento de la velocidad del buque.
+El sistema detecta automáticamente cuándo el barco salió y volvió a puerto.
+*   **Visualización por Etapa**: Cada etapa tiene dos botones especiales:
+    *   Icono de **Línea**: Muestra u oculta el recorrido dibujado de ese viaje.
+    *   Icono de **Puntos**: Muestra u oculta los puntos individuales de posicionamiento.
+*   **Navegación**: Al tocar en "Zarpada" o "Arribo", el mapa se moverá automáticamente al inicio o al final de ese viaje.
 
-*   **Resumen**: Indica la cantidad de etapas detectadas y el total de días navegados únicos.
-*   **Lista de Etapas**: Cada bloque representa un viaje detectado.
-    *   **Indicador de Actividad**: Un ícono de "Play" aparece si la etapa está activa en el tiempo actual seleccionado.
-    *   **Duración**: Muestra la duración del viaje en días.
-    *   **Navegación Rápida**: Haga clic en la fecha de "Zarpada" para saltar al inicio del viaje, o en "Arribo" para saltar al final.
-    *   **Visibilidad por Etapa**:
-        *   Ícono **Línea**: Muestra/oculta la trayectoria específica de ese viaje.
-        *   Ícono **Puntos**: Muestra/oculta los puntos individuales de ese viaje.
-
-### C. Línea de Tiempo y Reproducción (Inferior Central)
-Permite navegar a través de la historia de posiciones del buque.
-
-*   **Controles de Reproducción**:
-    *   `|<<` (Inicio): Salta al primer registro.
-    *   `<` (Anterior): Retrocede paso a paso.
-    *   `Play/Pausa`: Inicia o detiene la animación automática de la trayectoria.
-    *   `>` (Siguiente): Avanza paso a paso.
-    *   `>>|` (Fin): Salta al último registro.
-*   **Slider Principal**: Desplace el control para mover el buque a lo largo de su trayectoria.
-*   **Selector de Fecha**: Ícono de calendario para saltar a una fecha específica.
-*   **Rango de Fechas (Filtro Global)**: Un slider doble en la parte inferior permite filtrar todo el conjunto de datos entre una fecha mínima y máxima. Ajustar esto recalcula las etapas y lo que se muestra en el mapa.
-
-### D. Mapa y Navegación
-*   **Zoom**: Use la rueda del mouse o los botones `+` y `-` en la esquina inferior derecha.
-*   **Escala**: Una barra de escala métrica/náutica se encuentra junto a los controles de zoom.
-*   **Información en Pantalla**: Al pasar el cursor sobre cualquier punto, se despliega un "Tooltip" con información detallada.
-*   **Seguimiento**: Al reproducir o mover el slider, el mapa se centra automáticamente en la posición del buque para mantenerlo visible.
+### C. Línea de Tiempo y Filtros (Inferior)
+*   **Slider de Tiempo**: Mueva el círculo para ver la posición del barco en un momento exacto.
+*   **Controles de Play**: Puede darle "Play" para que el barco se mueva solo y simule su navegación.
+*   **Ir a una fecha**: Toque el icono de **calendario** a la derecha del slider para elegir un día y hora específicos a los que quiere saltar.
+*   **Filtro de Rango (Calendario)**: Toque el botón que muestra las fechas (ej: *01/01/24 - 05/01/24*) para abrir un calendario. Aquí puede elegir un periodo exacto (ej: "solo quiero ver lo que pasó entre el lunes y el miércoles").
 
 ---
 
-## 3. Lógica del Sistema
+## 3. Guardado Permanente (Base de Datos)
 
-### Detección de Etapas
-El algoritmo identifica automáticamente cuándo el buque sale a navegar usando las siguientes reglas:
-1.  **Detección de Salida**: Una secuencia de inactividad (velocidad 0) seguida de movimiento.
-2.  **Detección de Arribo**: Movimiento seguido de una secuencia de inactividad.
-3.  **Filtrado de Calidad**:
-    *   Duración mínima: **5 horas**.
-    *   Velocidad promedio: **>= 2 nudos** (para descartar movimientos en puerto o derivas lentas erróneas).
+Cada vez que cargue un archivo nuevo, la aplicación le preguntará: **"¿Desea guardar los datos en la base de datos?"**
 
-### Interactividad del Mapa
-*   Los puntos detectados como parte de una etapa se colorean automáticamente para distinguir diferentes viajes.
-*   El marcador del buque rota según el rumbo registrado (si el dato existe).
+*   **¿Para qué sirve?**: Si dice que SÍ, la información se guarda dentro de la aplicación.
+*   **Buscador**: La próxima vez que abra el programa, no necesita buscar el archivo Excel. Simplemente toque la **lupa** en la tarjeta superior, busque el nombre del barco o su matrícula, y los datos se cargarán instantáneamente.
+
+---
+
+## 4. Consejos de Uso
+*   **Zoom**: Use la rueda del ratón o los botones `+` y `-` para acercarse o alejarse.
+*   **Información**: Si pone el cursor sobre un punto del recorrido, aparecerá un pequeño cuadro con los detalles de ese momento exacto.
+*   **Centrado automático**: Al mover la línea de tiempo, el mapa siempre intentará mantener al barco a la vista.
