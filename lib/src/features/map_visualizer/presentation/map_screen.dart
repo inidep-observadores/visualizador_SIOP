@@ -15,6 +15,7 @@ import 'package:intl/intl.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/scale_bar.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/loading_dialog.dart';
 import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/custom_date_time_picker.dart';
+import 'package:visualizador_siop/src/features/map_visualizer/presentation/widgets/custom_date_range_picker.dart';
 
 class MapPoint {
   final LatLng position;
@@ -872,6 +873,11 @@ class _MapScreenState extends ConsumerState<MapScreen>
     final mapCenter = _filteredPoints.isNotEmpty
         ? _filteredPoints[_filteredPoints.length ~/ 2].position
         : const LatLng(-38.0055, -57.5426);
+    final isRangeEnabled =
+        _minDate != null && _maxDate != null && _minDate != _maxDate;
+    final rangeLabel = _currentRangeValues != null
+        ? '${_formatDate(DateTime.fromMillisecondsSinceEpoch(_currentRangeValues!.start.toInt()))} - ${_formatDate(DateTime.fromMillisecondsSinceEpoch(_currentRangeValues!.end.toInt()))}'
+        : '--/--/-- - --/--/--';
 
     final positionMarkers = _filteredPoints
         .map(
@@ -1532,9 +1538,42 @@ class _MapScreenState extends ConsumerState<MapScreen>
                               ],
                             ),
                             SizedBox(
-                              height: 20,
+                              height: 32,
                               child: Row(
                                 children: [
+                                  Tooltip(
+                                    message: 'Rango de fechas',
+                                    child: OutlinedButton.icon(
+                                      onPressed:
+                                          isRangeEnabled ? _pickDateRange : null,
+                                      icon: const Icon(
+                                        Icons.date_range,
+                                        size: 16,
+                                      ),
+                                      label: Text(
+                                        rangeLabel,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 4,
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        foregroundColor: Colors.indigo,
+                                        visualDensity: const VisualDensity(
+                                          horizontal: -4,
+                                          vertical: -4,
+                                        ),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
                                   Expanded(
                                     child: SliderTheme(
                                       data: SliderTheme.of(context).copyWith(
@@ -1973,6 +2012,74 @@ class _MapScreenState extends ConsumerState<MapScreen>
     }
 
     return uniqueDays.length;
+  }
+
+  Future<void> _pickDateRange() async {
+    if (_allPoints.isEmpty || _minDate == null || _maxDate == null) return;
+
+    final currentRange = _currentRangeValues;
+    final initialStart = currentRange != null
+        ? DateTime.fromMillisecondsSinceEpoch(currentRange.start.toInt())
+        : _minDate!;
+    final initialEnd = currentRange != null
+        ? DateTime.fromMillisecondsSinceEpoch(currentRange.end.toInt())
+        : _maxDate!;
+
+    final selectedRange = await showDialog<DateTimeRange>(
+      context: context,
+      builder: (context) => CustomDateRangePicker(
+        initialStartDate: DateTime(
+          initialStart.year,
+          initialStart.month,
+          initialStart.day,
+        ),
+        initialEndDate: DateTime(
+          initialEnd.year,
+          initialEnd.month,
+          initialEnd.day,
+        ),
+        firstDate: DateTime(_minDate!.year, _minDate!.month, _minDate!.day),
+        lastDate: DateTime(_maxDate!.year, _maxDate!.month, _maxDate!.day),
+      ),
+    );
+
+    if (selectedRange == null || !mounted) return;
+
+    final startDate = DateTime(
+      selectedRange.start.year,
+      selectedRange.start.month,
+      selectedRange.start.day,
+    );
+    final endDate = DateTime(
+      selectedRange.end.year,
+      selectedRange.end.month,
+      selectedRange.end.day,
+      23,
+      59,
+      59,
+      999,
+    );
+
+    final minMs = _minDate!.millisecondsSinceEpoch.toDouble();
+    final maxMs = _maxDate!.millisecondsSinceEpoch.toDouble();
+    double startMs = startDate.millisecondsSinceEpoch.toDouble();
+    double endMs = endDate.millisecondsSinceEpoch.toDouble();
+
+    if (startMs < minMs) startMs = minMs;
+    if (endMs > maxMs) endMs = maxMs;
+    if (endMs < startMs) endMs = startMs;
+
+    setState(() {
+      _currentRangeValues = RangeValues(startMs, endMs);
+    });
+
+    double clampedValue = _currentSliderValue ?? startMs;
+    if (clampedValue < startMs) {
+      clampedValue = startMs;
+    } else if (clampedValue > endMs) {
+      clampedValue = endMs;
+    }
+    _updateSliderAndMarker(clampedValue);
   }
 
   Future<void> _pickDateAndTime() async {
