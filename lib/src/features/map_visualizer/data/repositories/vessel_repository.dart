@@ -5,9 +5,14 @@ import 'package:visualizador_siop/src/features/map_visualizer/domain/vessel.dart
 import 'package:visualizador_siop/src/features/map_visualizer/domain/vessel_position.dart';
 
 class VesselRepository {
-  final _dbHelper = DatabaseHelper();
+  final DatabaseHelper _dbHelper;
+  final Database? _injectedDb;
 
-  Future<Database> get _db => _dbHelper.database;
+  VesselRepository({DatabaseHelper? dbHelper, Database? database})
+    : _dbHelper = dbHelper ?? DatabaseHelper(),
+      _injectedDb = database;
+
+  Future<Database> get _db async => _injectedDb ?? await _dbHelper.database;
 
   /// Gets a vessel by matricula or creates it if it doesn't exist.
   Future<Vessel> getOrCreateVessel(String nombre, String matricula) async {
