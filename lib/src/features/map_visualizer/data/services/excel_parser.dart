@@ -195,11 +195,28 @@ class DataFileParser {
     final bytes = await file.readAsBytes();
     final extension = path.toLowerCase().split('.').last;
 
+    List<Map<String, dynamic>> data;
     if (extension == 'csv') {
-      return compute(parseCsvBytes, bytes);
+      data = await compute(parseCsvBytes, bytes);
     } else {
       // Default to Excel
-      return compute(parseExcelBytes, bytes);
+      data = await compute(parseExcelBytes, bytes);
     }
+
+    if (data.isEmpty) {
+      throw Exception('El archivo está vacío o no tiene datos válidos.');
+    }
+
+    // Validation: Check for mandatory columns
+    final firstRow = data.first;
+    final keys = firstRow.keys.map((k) => k.trim().toLowerCase()).toList();
+
+    if (!keys.contains('buque') || !keys.contains('matricula')) {
+      throw Exception(
+        'Formato inválido. No se encontraron las columnas "Buque" o "Matricula".',
+      );
+    }
+
+    return data;
   }
 }

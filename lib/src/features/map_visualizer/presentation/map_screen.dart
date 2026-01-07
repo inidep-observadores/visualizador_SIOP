@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -125,6 +126,10 @@ class _MapScreenState extends ConsumerState<MapScreen>
   ];
 
   bool _isLoadingFromDb = false;
+  bool _didInfinitLoopCheck = false;
+
+  // Drag & Drop
+  bool _isDragging = false;
 
   @override
   void initState() {
@@ -342,52 +347,48 @@ class _MapScreenState extends ConsumerState<MapScreen>
   }
 
   Future<void> _pickFile() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['xlsx', 'csv'],
-        allowMultiple: true, // Allow multiple files!
+        allowMultiple: true,
       );
 
       if (result == null || result.files.isEmpty) return;
-
-      if (result.files.length == 1) {
-        // Single file flow: Load and visualize
-        final path = result.files.first.path!;
-        final extension = result.files.first.extension?.toLowerCase();
-
-        if (extension == 'xls') {
-          _showErrorSnackBar(
-            'El formato .xls no está soportado. Use .xlsx o .csv',
-          );
-          return;
-        }
-
-        ref.read(excelDataProvider.notifier).loadFromFile(path);
-      } else {
-        // Multiple files flow: Batch process with custom loader
-        final paths = result.files
-            .map((f) => f.path)
-            .whereType<String>()
-            .toList();
-        if (paths.isEmpty) return;
-
-        if (!mounted) return;
-
-        // Ask for confirmation before batch processing
-        final confirmed = await _showBatchConfirmDialog(paths.length);
-        if (confirmed != true || !mounted) return;
-
-        await showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => _BatchImportDialog(filePaths: paths),
-        );
-      }
+      _handleFiles(result.files.map((f) => f.path!).toList());
     } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Error al seleccionar archivos: $e')),
+      _showErrorSnackBar('Error al seleccionar archivos: $e');
+    }
+  }
+
+  Future<void> _handleFiles(List<String> paths) async {
+    if (paths.isEmpty) return;
+
+    if (paths.length == 1) {
+      // Single file flow: Load and visualize
+      final path = paths.first;
+      final extension = path.toLowerCase().split('.').last;
+
+      if (extension == 'xls') {
+        _showErrorSnackBar(
+          'El formato .xls no está soportado. Use .xlsx o .csv',
+        );
+        return;
+      }
+
+      ref.read(excelDataProvider.notifier).loadFromFile(path);
+    } else {
+      // Multiple files flow: Batch process with custom loader
+      if (!mounted) return;
+
+      // Ask for confirmation before batch processing
+      final confirmed = await _showBatchConfirmDialog(paths.length);
+      if (confirmed != true || !mounted) return;
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => _BatchImportDialog(filePaths: paths),
       );
     }
   }
@@ -815,425 +816,341 @@ class _MapScreenState extends ConsumerState<MapScreen>
         'N/A';
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Layer del Mapa (Fondo completo)
-          Positioned.fill(
-            child: MouseRegion(
-              onHover: (event) {
-                final point = math.Point(
-                  event.localPosition.dx,
-                  event.localPosition.dy,
-                );
-                try {
-                  final latLng = _mapController.camera.pointToLatLng(point);
-                  setState(() {
-                    _cursorPosition = latLng;
-                  });
-                } catch (e) {
-                  // Ignore conversion errors (e.g. if map not ready)
-                }
-              },
-              hitTestBehavior: HitTestBehavior.translucent,
-              child: FlutterMap(
-                mapController: _mapController,
-                options: MapOptions(
-                  initialCenter: mapCenter,
-                  initialZoom: _filteredPoints.isNotEmpty ? 6.0 : 5.0,
-                ),
-                children: [
-                  TileLayer(
-                    urlTemplate:
-                        'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                    userAgentPackageName:
-                        'com.danielditullio.visualizador_siop',
+      body: DropTarget(
+        onDragDone: (detail) {
+          final paths = detail.files.map((f) => f.path).toList();
+          _handleFiles(paths);
+        },
+        onDragUpdated: (details) {
+          // Explicitly handle drag update if needed for some OS environments
+        },
+        onDragEntered: (detail) => setState(() => _isDragging = true),
+        onDragExited: (detail) => setState(() => _isDragging = false),
+        child: Stack(
+          children: [
+            // 1. Layer del Mapa (Fondo completo)
+            Positioned.fill(
+              child: MouseRegion(
+                onHover: (event) {
+                  final point = math.Point(
+                    event.localPosition.dx,
+                    event.localPosition.dy,
+                  );
+                  try {
+                    final latLng = _mapController.camera.pointToLatLng(point);
+                    setState(() {
+                      _cursorPosition = latLng;
+                    });
+                  } catch (e) {
+                    // Ignore conversion errors (e.g. if map not ready)
+                  }
+                },
+                hitTestBehavior: HitTestBehavior.translucent,
+                child: FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: mapCenter,
+                    initialZoom: _filteredPoints.isNotEmpty ? 6.0 : 5.0,
                   ),
-
-                  // Graticule
-                  CustomGridLayer(
-                    lineColor: Colors.blueGrey.withValues(
-                      alpha: 0.3,
-                    ), // Color náutico sutil
-                    labelStyle: TextStyle(
-                      color: Colors.blueGrey[800],
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-
-                  // GeoJSON Layers (Below tracks)
-                  if (geoJsonAsync.value != null) ...[
-                    PolygonLayer(
-                      polygons: [
-                        ...geoJsonAsync.value!.otherPolygons,
-                        if (_showCentolla)
-                          ...geoJsonAsync.value!.centollaPolygons,
-                        if (_showVieira) ...geoJsonAsync.value!.vieiraPolygons,
-                      ],
-                    ),
-                    PolylineLayer(
-                      polylines: [
-                        ...geoJsonAsync.value!.otherPolylines,
-                        if (_showCentolla)
-                          ...geoJsonAsync.value!.centollaPolylines,
-                        if (_showVieira) ...geoJsonAsync.value!.vieiraPolylines,
-                      ],
-                    ),
-                  ],
-
-                  if (_filteredPoints.length > 1 && _showTrack)
-                    PolylineLayer(
-                      polylines: [
-                        Polyline(
-                          points: _filteredPoints
-                              .map((p) => p.position)
-                              .toList(),
-                          color: Colors.teal.withValues(alpha: 0.8),
-                          strokeWidth: 1.0,
-                        ),
-                      ],
+                  children: [
+                    TileLayer(
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName:
+                          'com.danielditullio.visualizador_siop',
                     ),
 
-                  if (_detectedTrips.any((t) => t.isVisible))
-                    PolylineLayer(
-                      polylines: [
+                    // Graticule
+                    CustomGridLayer(
+                      lineColor: Colors.blueGrey.withValues(
+                        alpha: 0.3,
+                      ), // Color náutico sutil
+                      labelStyle: TextStyle(
+                        color: Colors.blueGrey[800],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+
+                    // GeoJSON Layers (Below tracks)
+                    if (geoJsonAsync.value != null) ...[
+                      PolygonLayer(
+                        polygons: [
+                          ...geoJsonAsync.value!.otherPolygons,
+                          if (_showCentolla)
+                            ...geoJsonAsync.value!.centollaPolygons,
+                          if (_showVieira)
+                            ...geoJsonAsync.value!.vieiraPolygons,
+                        ],
+                      ),
+                      PolylineLayer(
+                        polylines: [
+                          ...geoJsonAsync.value!.otherPolylines,
+                          if (_showCentolla)
+                            ...geoJsonAsync.value!.centollaPolylines,
+                          if (_showVieira)
+                            ...geoJsonAsync.value!.vieiraPolylines,
+                        ],
+                      ),
+                    ],
+
+                    if (_filteredPoints.length > 1 && _showTrack)
+                      PolylineLayer(
+                        polylines: [
+                          Polyline(
+                            points: _filteredPoints
+                                .map((p) => p.position)
+                                .toList(),
+                            color: Colors.teal.withValues(alpha: 0.8),
+                            strokeWidth: 1.0,
+                          ),
+                        ],
+                      ),
+
+                    if (_detectedTrips.any((t) => t.isVisible))
+                      PolylineLayer(
+                        polylines: [
+                          for (final trip in _detectedTrips)
+                            if (trip.isVisible)
+                              Polyline(
+                                points: trip.pathPoints,
+                                color: trip.color,
+                                strokeWidth: 1.5,
+                              ),
+                        ],
+                      ),
+
+                    // Trip Points Layer
+                    MarkerLayer(
+                      markers: [
                         for (final trip in _detectedTrips)
-                          if (trip.isVisible)
-                            Polyline(
-                              points: trip.pathPoints,
-                              color: trip.color,
-                              strokeWidth: 1.5,
-                            ),
-                      ],
-                    ),
-
-                  // Trip Points Layer
-                  MarkerLayer(
-                    markers: [
-                      for (final trip in _detectedTrips)
-                        if (trip.arePointsVisible)
-                          for (final point in trip.tripPoints)
-                            Marker(
-                              point: point.position,
-                              width: 6,
-                              height: 6,
-                              child: Tooltip(
-                                message: _getTooltipMessage(point),
-                                waitDuration: Duration.zero,
-                                padding: const EdgeInsets.all(8.0),
-                                showDuration: Duration.zero,
-                                decoration: BoxDecoration(
-                                  color: Colors.black87,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: GestureDetector(
-                                  onTap: () {
-                                    if (point.timestamp != null) {
-                                      _updateSliderAndMarker(
-                                        point.timestamp!.millisecondsSinceEpoch
-                                            .toDouble(),
-                                      );
-                                    }
-                                  },
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: trip.color,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                        color: Colors.white,
-                                        width: 1,
+                          if (trip.arePointsVisible)
+                            for (final point in trip.tripPoints)
+                              Marker(
+                                point: point.position,
+                                width: 6,
+                                height: 6,
+                                child: Tooltip(
+                                  message: _getTooltipMessage(point),
+                                  waitDuration: Duration.zero,
+                                  padding: const EdgeInsets.all(8.0),
+                                  showDuration: Duration.zero,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black87,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      if (point.timestamp != null) {
+                                        _updateSliderAndMarker(
+                                          point
+                                              .timestamp!
+                                              .millisecondsSinceEpoch
+                                              .toDouble(),
+                                        );
+                                      }
+                                    },
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: trip.color,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 1,
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
-                            ),
-                    ],
-                  ),
+                      ],
+                    ),
 
-                  MarkerLayer(
-                    markers: [
-                      if (_showPoints) ...positionMarkers,
-                      if (currentPoint != null)
-                        Marker(
-                          width: 40,
-                          height: 40,
-                          point:
-                              _animatedMarkerPosition ?? currentPoint.position,
-                          child: Tooltip(
-                            message: _getTooltipMessage(currentPoint),
-                            waitDuration: Duration.zero,
-                            padding: const EdgeInsets.all(8.0),
-                            showDuration: Duration.zero,
-                            decoration: BoxDecoration(
-                              color: Colors.black87,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: AnimatedRotation(
-                              turns: (currentPoint.course ?? 0) / 360,
-                              duration: const Duration(milliseconds: 250),
-                              curve: Curves.easeInOut,
-                              child: const Icon(
-                                Icons.navigation,
-                                color: Colors.indigoAccent,
-                                size: 40,
+                    MarkerLayer(
+                      markers: [
+                        if (_showPoints) ...positionMarkers,
+                        if (currentPoint != null)
+                          Marker(
+                            width: 40,
+                            height: 40,
+                            point:
+                                _animatedMarkerPosition ??
+                                currentPoint.position,
+                            child: Tooltip(
+                              message: _getTooltipMessage(currentPoint),
+                              waitDuration: Duration.zero,
+                              padding: const EdgeInsets.all(8.0),
+                              showDuration: Duration.zero,
+                              decoration: BoxDecoration(
+                                color: Colors.black87,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: AnimatedRotation(
+                                turns: (currentPoint.course ?? 0) / 360,
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeInOut,
+                                child: const Icon(
+                                  Icons.navigation,
+                                  color: Colors.indigoAccent,
+                                  size: 40,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Cursor Coordinates Display (Bottom Left)
-          if (_cursorPosition != null)
-            Positioned(
-              bottom: 24,
-              left: 24,
-              child: IgnorePointer(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _formatCoordinate(_cursorPosition!.latitude, true),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                          color: Colors.black87,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        _formatCoordinate(_cursorPosition!.longitude, false),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          fontFeatures: [FontFeature.tabularFigures()],
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
 
-          // 2. Tarjeta Flotante de Información (Top Left)
-          Positioned(
-            top: 24,
-            left: 24,
-            child: SizedBox(
-              width:
-                  280, // Restaurado ancho para que quepa todo el diseño premium
-
-              child: FloatingMapCard(
-                elevation: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header premium rediseñado
-                    Row(
-                      children: [
-                        // Icono distintivo
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.indigoAccent.withAlpha(15),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(
-                            Icons.directions_boat_rounded,
-                            color: Colors.indigoAccent,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        // Información del buque
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                shipName == 'N/A'
-                                    ? 'SIN DATOS'
-                                    : shipName.toUpperCase(),
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.black87,
-                                  letterSpacing: -0.2,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                matricula == 'N/A'
-                                    ? 'Cargar o buscar'
-                                    : 'Mat.: ${trimMatricula(matricula)}',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey[600],
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Acciones rápidas
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _buildCompactAction(
-                              icon: Icons.search_rounded,
-                              onPressed: hasVessels
-                                  ? () => _showVesselSearch(context)
-                                  : null,
-                              color: Colors.indigoAccent,
-                              tooltip: 'Buscar en DB',
-                              enabled: hasVessels,
-                            ),
-                            const SizedBox(width: 8),
-                            _buildCompactAction(
-                              icon: Icons.upload_file_rounded,
-                              onPressed: isLoading ? null : _pickFile,
-                              color: Colors.indigoAccent,
-                              tooltip: 'Cargar archivo',
-                              enabled: !isLoading,
-                            ),
-                          ],
+            // Cursor Coordinates Display (Bottom Left)
+            if (_cursorPosition != null)
+              Positioned(
+                bottom: 24,
+                left: 24,
+                child: IgnorePointer(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 12),
-
-                    Text(
-                      'POSICIÓN ACTUAL',
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[700],
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    if (currentPoint != null &&
-                        currentPoint.timestamp != null) ...[
-                      // 1. Latitud
-                      _buildDataBox(
-                        'LATITUD',
-                        _formatCoordinate(currentPoint.position.latitude, true),
-                        Colors.blue.shade50.withValues(alpha: 0.4),
-                        Colors.blue.shade900,
-                      ),
-                      const SizedBox(height: 8),
-
-                      // 2. Longitud
-                      _buildDataBox(
-                        'LONGITUD',
-                        _formatCoordinate(
-                          currentPoint.position.longitude,
-                          false,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatCoordinate(_cursorPosition!.latitude, true),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            color: Colors.black87,
+                          ),
                         ),
-                        Colors.blue.shade50.withValues(alpha: 0.4),
-                        Colors.blue.shade900,
-                      ),
-                      const SizedBox(height: 12),
+                        const SizedBox(width: 12),
+                        Text(
+                          _formatCoordinate(_cursorPosition!.longitude, false),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            fontFeatures: [FontFeature.tabularFigures()],
+                            color: Colors.black87,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
-                      // 3. Fecha
-                      _buildInfoRow(
-                        Icons.calendar_today_outlined,
-                        'Fecha',
-                        _formatDate(currentPoint.timestamp!),
-                      ),
-                      // 4. Hora
-                      _buildInfoRow(
-                        Icons.access_time_outlined,
-                        'Hora local',
-                        _formatTime(currentPoint.timestamp!),
-                      ),
+            // 2. Tarjeta Flotante de Información (Top Left)
+            Positioned(
+              top: 24,
+              left: 24,
+              child: SizedBox(
+                width:
+                    280, // Restaurado ancho para que quepa todo el diseño premium
 
-                      const SizedBox(height: 8),
-                      const Divider(height: 1),
-                      const SizedBox(height: 8),
-
-                      // Speed/Course Compact at bottom
+                child: FloatingMapCard(
+                  elevation: 2,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header premium rediseñado
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Vel: ${currentPoint.speed?.toStringAsFixed(1) ?? "-"} kn',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[700],
+                          // Icono distintivo
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.indigoAccent.withAlpha(15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.directions_boat_rounded,
+                              color: Colors.indigoAccent,
+                              size: 20,
                             ),
                           ),
-                          Text(
-                            'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "-"}º',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey[700],
+                          const SizedBox(width: 10),
+                          // Información del buque
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  shipName == 'N/A'
+                                      ? 'SIN DATOS'
+                                      : shipName.toUpperCase(),
+                                  style: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.black87,
+                                    letterSpacing: -0.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  matricula == 'N/A'
+                                      ? 'Cargar o buscar'
+                                      : 'Mat.: ${trimMatricula(matricula)}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
                             ),
+                          ),
+                          const SizedBox(width: 8),
+                          // Acciones rápidas
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _buildCompactAction(
+                                icon: Icons.search_rounded,
+                                onPressed: hasVessels
+                                    ? () => _showVesselSearch(context)
+                                    : null,
+                                color: Colors.indigoAccent,
+                                tooltip: 'Buscar en DB',
+                                enabled: hasVessels,
+                              ),
+                              const SizedBox(width: 8),
+                              _buildCompactAction(
+                                icon: Icons.upload_file_rounded,
+                                onPressed: isLoading ? null : _pickFile,
+                                color: Colors.indigoAccent,
+                                tooltip: 'Cargar archivo',
+                                enabled: !isLoading,
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                    ] else ...[
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[50]!.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.grey[300]!),
-                        ),
-                        child: const Text(
-                          'Seleccione un punto',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 12,
-                            fontStyle: FontStyle.italic,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                    ],
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 12),
 
-                    const SizedBox(height: 12),
-                    const Divider(height: 1),
-                    const SizedBox(height: 8),
-
-                    // Layer Controls
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'CAPAS VISIBLES',
+                      Text(
+                        'POSICIÓN ACTUAL',
                         style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
@@ -1241,657 +1158,823 @@ class _MapScreenState extends ConsumerState<MapScreen>
                           letterSpacing: 1,
                         ),
                       ),
-                    ),
-                    _buildCompactSwitch(
-                      'Puntos totales',
-                      _showPoints,
-                      (val) => setState(() => _showPoints = val),
-                    ),
-                    _buildCompactSwitch(
-                      'Trayectoria total',
-                      _showTrack,
-                      (val) => setState(() => _showTrack = val),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildCompactSwitch(
-                      ' Áreas de Vieira',
-                      _showVieira,
-                      (val) => setState(() => _showVieira = val),
-                    ),
-                    _buildCompactSwitch(
-                      'Áreas de Centolla',
-                      _showCentolla,
-                      (val) => setState(() => _showCentolla = val),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+                      const SizedBox(height: 8),
 
-          // 3. Tarjeta Flotante de Timeline (Bottom Center)
-          Positioned(
-            left: 24,
-            right: 24,
-            bottom: 24,
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 800),
-                child: FloatingMapCard(
-                  elevation: 3,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24.0,
-                    vertical: 8.0,
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Main Slider
-                      // Main Slider
-                      Row(
-                        children: [
-                          // Controls Group
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                onPressed: _skipToStart,
-                                icon: const Icon(Icons.skip_previous), // Start
-                                color: Colors.grey[700],
-                                iconSize: 18,
-                                tooltip: 'Inicio',
-                              ),
-                              IconButton(
-                                onPressed: _stepBackward,
-                                icon: const Icon(Icons.navigate_before), // Prev
-                                color: Colors.grey[700],
-                                iconSize: 22,
-                                tooltip: 'Anterior',
-                              ),
-                              IconButton(
-                                onPressed: _togglePlay,
-                                icon: Icon(
-                                  _isPlaying
-                                      ? Icons.pause_circle_filled
-                                      : Icons.play_circle_filled,
-                                ),
-                                color: Colors.indigoAccent,
-                                iconSize: 32, // Larger
-                                tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
-                              ),
-                              IconButton(
-                                onPressed: () => _stepForward(),
-                                icon: const Icon(Icons.navigate_next), // Next
-                                color: Colors.grey[700],
-                                iconSize: 22,
-                                tooltip: 'Siguiente',
-                              ),
-                              IconButton(
-                                onPressed: _skipToEnd,
-                                icon: const Icon(Icons.skip_next), // End
-                                color: Colors.grey[700],
-                                iconSize: 18,
-                                tooltip: 'Fin',
-                              ),
-                            ],
+                      if (currentPoint != null &&
+                          currentPoint.timestamp != null) ...[
+                        // 1. Latitud
+                        _buildDataBox(
+                          'LATITUD',
+                          _formatCoordinate(
+                            currentPoint.position.latitude,
+                            true,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: _currentRangeValues != null
-                                ? SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      activeTrackColor: Colors.indigoAccent,
-                                      thumbColor: Colors.indigo,
-                                      overlayColor: Colors.indigo.withValues(
-                                        alpha: 0.2,
-                                      ),
-                                      trackHeight: 2,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 6,
-                                      ),
-                                    ),
-                                    child: Slider(
-                                      value: _getSliderValueIndex(),
-                                      min: 0.0,
-                                      max: math.max(
-                                        0.0,
-                                        (_filteredPoints.length - 1).toDouble(),
-                                      ),
-                                      divisions: math.max(
-                                        1,
-                                        _filteredPoints.length - 1,
-                                      ),
-                                      label: _currentSliderValue != null
-                                          ? _formatDateTime(
-                                              DateTime.fromMillisecondsSinceEpoch(
-                                                _currentSliderValue!.toInt(),
-                                              ),
-                                            )
-                                          : null,
-                                      onChanged: (value) {
-                                        final index = value.round();
-                                        if (index >= 0 &&
-                                            index < _filteredPoints.length) {
-                                          setState(() {
-                                            _currentSliderValue =
-                                                _filteredPoints[index]
-                                                    .timestamp!
-                                                    .millisecondsSinceEpoch
-                                                    .toDouble();
-                                          });
-                                          final selected = _selectedPoint;
-                                          if (selected != null) {
-                                            _updateMarkerTarget(
-                                              selected.position,
-                                              animate: true,
-                                            );
-                                            _ensureVisible(selected.position);
-                                          }
-                                        }
-                                      },
-                                    ),
-                                  )
-                                : const LinearProgressIndicator(value: 0),
-                          ),
-                          const SizedBox(width: 8),
-                          IconButton(
-                            onPressed: _pickDateAndTime,
-                            icon: const Icon(Icons.calendar_month),
-                            iconSize: 22,
-                            color: Colors.indigoAccent,
-                            tooltip: 'Ir a fecha...',
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ],
-                      ),
+                          Colors.blue.shade50.withValues(alpha: 0.4),
+                          Colors.blue.shade900,
+                        ),
+                        const SizedBox(height: 8),
 
-                      // Range Slider & Dates
-                      const SizedBox(height: 0),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 2,
+                        // 2. Longitud
+                        _buildDataBox(
+                          'LONGITUD',
+                          _formatCoordinate(
+                            currentPoint.position.longitude,
+                            false,
+                          ),
+                          Colors.blue.shade50.withValues(alpha: 0.4),
+                          Colors.blue.shade900,
                         ),
-                        decoration: BoxDecoration(
-                          // color: Colors.grey[50]!.withOpacity(0.5),
-                          color: Colors.transparent,
-                          borderRadius: BorderRadius.circular(12),
+                        const SizedBox(height: 12),
+
+                        // 3. Fecha
+                        _buildInfoRow(
+                          Icons.calendar_today_outlined,
+                          'Fecha',
+                          _formatDate(currentPoint.timestamp!),
                         ),
-                        child: Column(
+                        // 4. Hora
+                        _buildInfoRow(
+                          Icons.access_time_outlined,
+                          'Hora local',
+                          _formatTime(currentPoint.timestamp!),
+                        ),
+
+                        const SizedBox(height: 8),
+                        const Divider(height: 1),
+                        const SizedBox(height: 8),
+
+                        // Speed/Course Compact at bottom
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  _minDate != null
-                                      ? _formatDateTime(_minDate!)
-                                      : '--/--/-- --:--',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey[700],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                Text(
-                                  _maxDate != null
-                                      ? _formatDateTime(_maxDate!)
-                                      : '--/--/-- --:--',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.grey[700],
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              'Vel: ${currentPoint.speed?.toStringAsFixed(1) ?? "-"} kn',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[700],
+                              ),
                             ),
-                            SizedBox(
-                              height: 32,
-                              child: Row(
-                                children: [
-                                  Tooltip(
-                                    message: 'Rango de fechas',
-                                    child: OutlinedButton.icon(
-                                      onPressed: isRangeEnabled
-                                          ? _pickDateRange
-                                          : null,
-                                      icon: const Icon(
-                                        Icons.date_range,
-                                        size: 16,
-                                      ),
-                                      label: Text(
-                                        rangeLabel,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      style: OutlinedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 4,
-                                        ),
-                                        textStyle: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                        foregroundColor: Colors.indigo,
-                                        visualDensity: const VisualDensity(
-                                          horizontal: -4,
-                                          vertical: -4,
-                                        ),
-                                        tapTargetSize:
-                                            MaterialTapTargetSize.shrinkWrap,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: SliderTheme(
-                                      data: SliderTheme.of(context).copyWith(
-                                        activeTrackColor: Colors.indigoAccent,
-                                        inactiveTrackColor: Colors.black12,
-                                        trackHeight: 2,
-                                        rangeThumbShape:
-                                            const RoundRangeSliderThumbShape(
-                                              enabledThumbRadius: 4,
-                                            ),
-                                        overlayColor: Colors.indigo.withValues(
-                                          alpha: 0.2,
-                                        ),
-                                        valueIndicatorColor: Colors.indigo,
-                                        valueIndicatorTextStyle:
-                                            const TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                        showValueIndicator:
-                                            ShowValueIndicator.onDrag,
-                                      ),
-                                      child: RangeSlider(
-                                        values:
-                                            _currentRangeValues ??
-                                            const RangeValues(0, 1),
-                                        min:
-                                            _minDate?.millisecondsSinceEpoch
-                                                .toDouble() ??
-                                            0,
-                                        max:
-                                            _maxDate?.millisecondsSinceEpoch
-                                                .toDouble() ??
-                                            1,
-                                        labels: _currentRangeValues != null
-                                            ? RangeLabels(
-                                                _formatDateTime(
-                                                  DateTime.fromMillisecondsSinceEpoch(
-                                                    _currentRangeValues!.start
-                                                        .toInt(),
-                                                  ),
-                                                ),
-                                                _formatDateTime(
-                                                  DateTime.fromMillisecondsSinceEpoch(
-                                                    _currentRangeValues!.end
-                                                        .toInt(),
-                                                  ),
-                                                ),
-                                              )
-                                            : null,
-                                        onChanged:
-                                            (_minDate != null &&
-                                                _maxDate != null &&
-                                                _minDate != _maxDate)
-                                            ? (RangeValues values) {
-                                                setState(() {
-                                                  _currentRangeValues = values;
-                                                  if (_currentSliderValue !=
-                                                      null) {
-                                                    if (_currentSliderValue! <
-                                                            values.start ||
-                                                        _currentSliderValue! >
-                                                            values.end) {
-                                                      // Clamp slider if range moves past it?
-                                                      // Or just let filter handle hiding point
-                                                      _filterPoints();
-                                                    } else {
-                                                      _filterPoints();
-                                                    }
-                                                  } else {
-                                                    _filterPoints();
-                                                  }
-                                                });
-                                              }
-                                            : null,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            Text(
+                              'Rumbo: ${currentPoint.course?.toStringAsFixed(0) ?? "-"}º',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey[700],
                               ),
                             ),
                           ],
                         ),
+                      ] else ...[
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[50]!.withValues(alpha: 0.5),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey[300]!),
+                          ),
+                          child: const Text(
+                            'Seleccione un punto',
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ],
+
+                      const SizedBox(height: 12),
+                      const Divider(height: 1),
+                      const SizedBox(height: 8),
+
+                      // Layer Controls
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'CAPAS VISIBLES',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[700],
+                            letterSpacing: 1,
+                          ),
+                        ),
+                      ),
+                      _buildCompactSwitch(
+                        'Puntos totales',
+                        _showPoints,
+                        (val) => setState(() => _showPoints = val),
+                      ),
+                      _buildCompactSwitch(
+                        'Trayectoria total',
+                        _showTrack,
+                        (val) => setState(() => _showTrack = val),
+                      ),
+                      const SizedBox(height: 8),
+                      _buildCompactSwitch(
+                        ' Áreas de Vieira',
+                        _showVieira,
+                        (val) => setState(() => _showVieira = val),
+                      ),
+                      _buildCompactSwitch(
+                        'Áreas de Centolla',
+                        _showCentolla,
+                        (val) => setState(() => _showCentolla = val),
                       ),
                     ],
                   ),
                 ),
               ),
             ),
-          ),
-          // 4. Tarjeta Flotante de Etapas (Top Right)
-          if (_allPoints.isNotEmpty)
+
+            // 3. Tarjeta Flotante de Timeline (Bottom Center)
             Positioned(
-              top: 24,
+              left: 24,
               right: 24,
-              child: SizedBox(
-                width: 220,
-                child: FloatingMapCard(
-                  elevation: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${_detectedTrips.length} ${_detectedTrips.length == 1 ? "ETAPA" : "ETAPAS"}',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                          letterSpacing: 1,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_calculateUniqueNavigatedDays()} ${_calculateUniqueNavigatedDays() == 1 ? "día" : "días"} navegados',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.grey[700],
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
-                      const Divider(height: 1),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 500),
-                        child: _detectedTrips.isEmpty
-                            ? Container(
-                                padding: const EdgeInsets.all(16),
-                                alignment: Alignment.center,
-                                child: const Text(
-                                  'No se encontraron etapas',
-                                  style: TextStyle(
-                                    color: Colors.grey,
-                                    fontSize: 12,
-                                    fontStyle: FontStyle.italic,
-                                  ),
-                                  textAlign: TextAlign.center,
+              bottom: 24,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: FloatingMapCard(
+                    elevation: 3,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24.0,
+                      vertical: 8.0,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Main Slider
+                        // Main Slider
+                        Row(
+                          children: [
+                            // Controls Group
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  onPressed: _skipToStart,
+                                  icon: const Icon(
+                                    Icons.skip_previous,
+                                  ), // Start
+                                  color: Colors.grey[700],
+                                  iconSize: 18,
+                                  tooltip: 'Inicio',
                                 ),
-                              )
-                            : ListView.builder(
-                                padding: const EdgeInsets.only(top: 8),
-                                shrinkWrap: true,
-                                itemCount: _detectedTrips.length,
-                                itemBuilder: (context, index) {
-                                  final trip = _detectedTrips[index];
-
-                                  // Check if active based on slider time
-                                  bool isActive = false;
-                                  if (_currentSliderValue != null) {
-                                    final currentTime =
-                                        DateTime.fromMillisecondsSinceEpoch(
-                                          _currentSliderValue!.toInt(),
-                                        );
-                                    // Relaxed check: is currentTime within [start, end]?
-                                    // Use slight buffer or inclusive check
-                                    if (currentTime.isAfter(
-                                          trip.startTime.subtract(
-                                            const Duration(minutes: 1),
-                                          ),
-                                        ) &&
-                                        currentTime.isBefore(
-                                          trip.endTime.add(
-                                            const Duration(minutes: 1),
-                                          ),
-                                        )) {
-                                      isActive = true;
-                                    }
-                                  }
-
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 8),
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: trip.color.withValues(
-                                        alpha: isActive ? 0.15 : 0.05,
-                                      ),
-                                      border: Border(
-                                        left: BorderSide(
-                                          color: trip.color,
-                                          width: 4,
+                                IconButton(
+                                  onPressed: _stepBackward,
+                                  icon: const Icon(
+                                    Icons.navigate_before,
+                                  ), // Prev
+                                  color: Colors.grey[700],
+                                  iconSize: 22,
+                                  tooltip: 'Anterior',
+                                ),
+                                IconButton(
+                                  onPressed: _togglePlay,
+                                  icon: Icon(
+                                    _isPlaying
+                                        ? Icons.pause_circle_filled
+                                        : Icons.play_circle_filled,
+                                  ),
+                                  color: Colors.indigoAccent,
+                                  iconSize: 32, // Larger
+                                  tooltip: _isPlaying ? 'Pausar' : 'Reproducir',
+                                ),
+                                IconButton(
+                                  onPressed: () => _stepForward(),
+                                  icon: const Icon(Icons.navigate_next), // Next
+                                  color: Colors.grey[700],
+                                  iconSize: 22,
+                                  tooltip: 'Siguiente',
+                                ),
+                                IconButton(
+                                  onPressed: _skipToEnd,
+                                  icon: const Icon(Icons.skip_next), // End
+                                  color: Colors.grey[700],
+                                  iconSize: 18,
+                                  tooltip: 'Fin',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _currentRangeValues != null
+                                  ? SliderTheme(
+                                      data: SliderTheme.of(context).copyWith(
+                                        activeTrackColor: Colors.indigoAccent,
+                                        thumbColor: Colors.indigo,
+                                        overlayColor: Colors.indigo.withValues(
+                                          alpha: 0.2,
+                                        ),
+                                        trackHeight: 2,
+                                        thumbShape: const RoundSliderThumbShape(
+                                          enabledThumbRadius: 6,
                                         ),
                                       ),
-                                      borderRadius: BorderRadius.circular(4),
+                                      child: Slider(
+                                        value: _getSliderValueIndex(),
+                                        min: 0.0,
+                                        max: math.max(
+                                          0.0,
+                                          (_filteredPoints.length - 1)
+                                              .toDouble(),
+                                        ),
+                                        divisions: math.max(
+                                          1,
+                                          _filteredPoints.length - 1,
+                                        ),
+                                        label: _currentSliderValue != null
+                                            ? _formatDateTime(
+                                                DateTime.fromMillisecondsSinceEpoch(
+                                                  _currentSliderValue!.toInt(),
+                                                ),
+                                              )
+                                            : null,
+                                        onChanged: (value) {
+                                          final index = value.round();
+                                          if (index >= 0 &&
+                                              index < _filteredPoints.length) {
+                                            setState(() {
+                                              _currentSliderValue =
+                                                  _filteredPoints[index]
+                                                      .timestamp!
+                                                      .millisecondsSinceEpoch
+                                                      .toDouble();
+                                            });
+                                            final selected = _selectedPoint;
+                                            if (selected != null) {
+                                              _updateMarkerTarget(
+                                                selected.position,
+                                                animate: true,
+                                              );
+                                              _ensureVisible(selected.position);
+                                            }
+                                          }
+                                        },
+                                      ),
+                                    )
+                                  : const LinearProgressIndicator(value: 0),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: _pickDateAndTime,
+                              icon: const Icon(Icons.calendar_month),
+                              iconSize: 22,
+                              color: Colors.indigoAccent,
+                              tooltip: 'Ir a fecha...',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ],
+                        ),
+
+                        // Range Slider & Dates
+                        const SizedBox(height: 0),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            // color: Colors.grey[50]!.withOpacity(0.5),
+                            color: Colors.transparent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _minDate != null
+                                        ? _formatDateTime(_minDate!)
+                                        : '--/--/-- --:--',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500,
                                     ),
-                                    child: Stack(
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.only(
-                                            right: 24.0,
-                                          ), // Reserve space for icon
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
-                                              Row(
-                                                mainAxisAlignment:
-                                                    MainAxisAlignment
-                                                        .spaceBetween,
-                                                children: [
-                                                  Row(
-                                                    children: [
-                                                      if (isActive)
-                                                        Padding(
-                                                          padding:
-                                                              const EdgeInsets.only(
-                                                                right: 4,
-                                                              ),
-                                                          child: Icon(
-                                                            Icons.play_arrow,
-                                                            size: 10,
+                                  ),
+                                  Text(
+                                    _maxDate != null
+                                        ? _formatDateTime(_maxDate!)
+                                        : '--/--/-- --:--',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.grey[700],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(
+                                height: 32,
+                                child: Row(
+                                  children: [
+                                    Tooltip(
+                                      message: 'Rango de fechas',
+                                      child: OutlinedButton.icon(
+                                        onPressed: isRangeEnabled
+                                            ? _pickDateRange
+                                            : null,
+                                        icon: const Icon(
+                                          Icons.date_range,
+                                          size: 16,
+                                        ),
+                                        label: Text(
+                                          rangeLabel,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 4,
+                                          ),
+                                          textStyle: const TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                          foregroundColor: Colors.indigo,
+                                          visualDensity: const VisualDensity(
+                                            horizontal: -4,
+                                            vertical: -4,
+                                          ),
+                                          tapTargetSize:
+                                              MaterialTapTargetSize.shrinkWrap,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: SliderTheme(
+                                        data: SliderTheme.of(context).copyWith(
+                                          activeTrackColor: Colors.indigoAccent,
+                                          inactiveTrackColor: Colors.black12,
+                                          trackHeight: 2,
+                                          rangeThumbShape:
+                                              const RoundRangeSliderThumbShape(
+                                                enabledThumbRadius: 4,
+                                              ),
+                                          overlayColor: Colors.indigo
+                                              .withValues(alpha: 0.2),
+                                          valueIndicatorColor: Colors.indigo,
+                                          valueIndicatorTextStyle:
+                                              const TextStyle(
+                                                color: Colors.white,
+                                              ),
+                                          showValueIndicator:
+                                              ShowValueIndicator.onDrag,
+                                        ),
+                                        child: RangeSlider(
+                                          values:
+                                              _currentRangeValues ??
+                                              const RangeValues(0, 1),
+                                          min:
+                                              _minDate?.millisecondsSinceEpoch
+                                                  .toDouble() ??
+                                              0,
+                                          max:
+                                              _maxDate?.millisecondsSinceEpoch
+                                                  .toDouble() ??
+                                              1,
+                                          labels: _currentRangeValues != null
+                                              ? RangeLabels(
+                                                  _formatDateTime(
+                                                    DateTime.fromMillisecondsSinceEpoch(
+                                                      _currentRangeValues!.start
+                                                          .toInt(),
+                                                    ),
+                                                  ),
+                                                  _formatDateTime(
+                                                    DateTime.fromMillisecondsSinceEpoch(
+                                                      _currentRangeValues!.end
+                                                          .toInt(),
+                                                    ),
+                                                  ),
+                                                )
+                                              : null,
+                                          onChanged:
+                                              (_minDate != null &&
+                                                  _maxDate != null &&
+                                                  _minDate != _maxDate)
+                                              ? (RangeValues values) {
+                                                  setState(() {
+                                                    _currentRangeValues =
+                                                        values;
+                                                    if (_currentSliderValue !=
+                                                        null) {
+                                                      if (_currentSliderValue! <
+                                                              values.start ||
+                                                          _currentSliderValue! >
+                                                              values.end) {
+                                                        // Clamp slider if range moves past it?
+                                                        // Or just let filter handle hiding point
+                                                        _filterPoints();
+                                                      } else {
+                                                        _filterPoints();
+                                                      }
+                                                    } else {
+                                                      _filterPoints();
+                                                    }
+                                                  });
+                                                }
+                                              : null,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            // 4. Tarjeta Flotante de Etapas (Top Right)
+            if (_allPoints.isNotEmpty)
+              Positioned(
+                top: 24,
+                right: 24,
+                child: SizedBox(
+                  width: 220,
+                  child: FloatingMapCard(
+                    elevation: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${_detectedTrips.length} ${_detectedTrips.length == 1 ? "ETAPA" : "ETAPAS"}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black87,
+                            letterSpacing: 1,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${_calculateUniqueNavigatedDays()} ${_calculateUniqueNavigatedDays() == 1 ? "día" : "días"} navegados',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[700],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        const Divider(height: 1),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 500),
+                          child: _detectedTrips.isEmpty
+                              ? Container(
+                                  padding: const EdgeInsets.all(16),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    'No se encontraron etapas',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 12,
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                )
+                              : ListView.builder(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  shrinkWrap: true,
+                                  itemCount: _detectedTrips.length,
+                                  itemBuilder: (context, index) {
+                                    final trip = _detectedTrips[index];
+
+                                    // Check if active based on slider time
+                                    bool isActive = false;
+                                    if (_currentSliderValue != null) {
+                                      final currentTime =
+                                          DateTime.fromMillisecondsSinceEpoch(
+                                            _currentSliderValue!.toInt(),
+                                          );
+                                      // Relaxed check: is currentTime within [start, end]?
+                                      // Use slight buffer or inclusive check
+                                      if (currentTime.isAfter(
+                                            trip.startTime.subtract(
+                                              const Duration(minutes: 1),
+                                            ),
+                                          ) &&
+                                          currentTime.isBefore(
+                                            trip.endTime.add(
+                                              const Duration(minutes: 1),
+                                            ),
+                                          )) {
+                                        isActive = true;
+                                      }
+                                    }
+
+                                    return Container(
+                                      margin: const EdgeInsets.only(bottom: 8),
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: trip.color.withValues(
+                                          alpha: isActive ? 0.15 : 0.05,
+                                        ),
+                                        border: Border(
+                                          left: BorderSide(
+                                            color: trip.color,
+                                            width: 4,
+                                          ),
+                                        ),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Stack(
+                                        children: [
+                                          Padding(
+                                            padding: const EdgeInsets.only(
+                                              right: 24.0,
+                                            ), // Reserve space for icon
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment
+                                                          .spaceBetween,
+                                                  children: [
+                                                    Row(
+                                                      children: [
+                                                        if (isActive)
+                                                          Padding(
+                                                            padding:
+                                                                const EdgeInsets.only(
+                                                                  right: 4,
+                                                                ),
+                                                            child: Icon(
+                                                              Icons.play_arrow,
+                                                              size: 10,
+                                                              color: trip.color,
+                                                            ),
+                                                          ),
+                                                        Text(
+                                                          'Etapa ${index + 1}',
+                                                          style: TextStyle(
+                                                            fontWeight:
+                                                                FontWeight.bold,
+                                                            fontSize: 12,
                                                             color: trip.color,
                                                           ),
                                                         ),
-                                                      Text(
-                                                        'Etapa ${index + 1}',
-                                                        style: TextStyle(
+                                                      ],
+                                                    ),
+                                                    Container(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 6,
+                                                            vertical: 2,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: trip.color,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              10,
+                                                            ),
+                                                      ),
+                                                      child: Text(
+                                                        '${trip.durationInDays} ${trip.durationInDays == 1 ? "día" : "días"}',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontSize: 10,
                                                           fontWeight:
                                                               FontWeight.bold,
-                                                          fontSize: 12,
-                                                          color: trip.color,
                                                         ),
                                                       ),
-                                                    ],
+                                                    ),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 4),
+                                                InkWell(
+                                                  onTap: () {
+                                                    _updateSliderAndMarker(
+                                                      trip
+                                                          .startTime
+                                                          .millisecondsSinceEpoch
+                                                          .toDouble(),
+                                                    );
+                                                    _animatedMapMove(
+                                                      trip.startPoint.position,
+                                                      _mapController
+                                                          .camera
+                                                          .zoom,
+                                                    );
+                                                  },
+                                                  child: Text(
+                                                    'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                    ),
                                                   ),
-                                                  Container(
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 6,
-                                                          vertical: 2,
-                                                        ),
-                                                    decoration: BoxDecoration(
-                                                      color: trip.color,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            10,
+                                                ),
+                                                InkWell(
+                                                  onTap: () {
+                                                    _updateSliderAndMarker(
+                                                      trip
+                                                          .endTime
+                                                          .millisecondsSinceEpoch
+                                                          .toDouble(),
+                                                    );
+                                                    _animatedMapMove(
+                                                      trip.endPoint.position,
+                                                      _mapController
+                                                          .camera
+                                                          .zoom,
+                                                    );
+                                                  },
+                                                  child: Text(
+                                                    'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 11,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                          Positioned(
+                                            bottom: 0,
+                                            right: 0,
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                InkWell(
+                                                  onTap: () {
+                                                    setState(() {
+                                                      trip.isVisible =
+                                                          !trip.isVisible;
+                                                    });
+                                                  },
+                                                  child: Tooltip(
+                                                    message: trip.isVisible
+                                                        ? 'Ocultar trayectoria de esta etapa'
+                                                        : 'Mostrar trayectoria de esta etapa',
+                                                    child: Icon(
+                                                      Icons.timeline,
+                                                      size: 20,
+                                                      color: trip.color
+                                                          .withValues(
+                                                            alpha:
+                                                                trip.isVisible
+                                                                ? 1.0
+                                                                : 0.3,
                                                           ),
                                                     ),
-                                                    child: Text(
-                                                      '${trip.durationInDays} ${trip.durationInDays == 1 ? "día" : "días"}',
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 10,
-                                                        fontWeight:
-                                                            FontWeight.bold,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                InkWell(
+                                                  onTap: () {
+                                                    setState(() {
+                                                      trip.arePointsVisible =
+                                                          !trip
+                                                              .arePointsVisible;
+                                                    });
+                                                  },
+                                                  child: Tooltip(
+                                                    message:
+                                                        trip.arePointsVisible
+                                                        ? 'Ocultar puntos de esta etapa'
+                                                        : 'Mostrar puntos de esta etapa',
+                                                    child: Icon(
+                                                      Icons.scatter_plot,
+                                                      size: 20,
+                                                      color: trip.color.withValues(
+                                                        alpha:
+                                                            trip.arePointsVisible
+                                                            ? 1.0
+                                                            : 0.3,
                                                       ),
                                                     ),
                                                   ),
-                                                ],
-                                              ),
-                                              const SizedBox(height: 4),
-                                              InkWell(
-                                                onTap: () {
-                                                  _updateSliderAndMarker(
-                                                    trip
-                                                        .startTime
-                                                        .millisecondsSinceEpoch
-                                                        .toDouble(),
-                                                  );
-                                                  _animatedMapMove(
-                                                    trip.startPoint.position,
-                                                    _mapController.camera.zoom,
-                                                  );
-                                                },
-                                                child: Text(
-                                                  'Zarpada: ${DateFormat('dd/MM HH:mm').format(trip.startTime)}',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                  ),
                                                 ),
-                                              ),
-                                              InkWell(
-                                                onTap: () {
-                                                  _updateSliderAndMarker(
-                                                    trip
-                                                        .endTime
-                                                        .millisecondsSinceEpoch
-                                                        .toDouble(),
-                                                  );
-                                                  _animatedMapMove(
-                                                    trip.endPoint.position,
-                                                    _mapController.camera.zoom,
-                                                  );
-                                                },
-                                                child: Text(
-                                                  'Arribo:    ${DateFormat('dd/MM HH:mm').format(trip.endTime)}',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                        Positioned(
-                                          bottom: 0,
-                                          right: 0,
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              InkWell(
-                                                onTap: () {
-                                                  setState(() {
-                                                    trip.isVisible =
-                                                        !trip.isVisible;
-                                                  });
-                                                },
-                                                child: Tooltip(
-                                                  message: trip.isVisible
-                                                      ? 'Ocultar trayectoria de esta etapa'
-                                                      : 'Mostrar trayectoria de esta etapa',
-                                                  child: Icon(
-                                                    Icons.timeline,
-                                                    size: 20,
-                                                    color: trip.color
-                                                        .withValues(
-                                                          alpha: trip.isVisible
-                                                              ? 1.0
-                                                              : 0.3,
-                                                        ),
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              InkWell(
-                                                onTap: () {
-                                                  setState(() {
-                                                    trip.arePointsVisible =
-                                                        !trip.arePointsVisible;
-                                                  });
-                                                },
-                                                child: Tooltip(
-                                                  message: trip.arePointsVisible
-                                                      ? 'Ocultar puntos de esta etapa'
-                                                      : 'Mostrar puntos de esta etapa',
-                                                  child: Icon(
-                                                    Icons.scatter_plot,
-                                                    size: 20,
-                                                    color: trip.color.withValues(
-                                                      alpha:
-                                                          trip.arePointsVisible
-                                                          ? 1.0
-                                                          : 0.3,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                      ),
-                    ],
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          Positioned(
-            bottom: 24,
-            right: 80, // Left of zoom buttons
-            child: ScaleBar(
-              mapController: _mapController,
-              textStyle: TextStyle(
-                fontSize: 10,
-                color: Colors.grey[800],
-                fontWeight: FontWeight.bold,
+            Positioned(
+              bottom: 24,
+              right: 80, // Left of zoom buttons
+              child: ScaleBar(
+                mapController: _mapController,
+                textStyle: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey[800],
+                  fontWeight: FontWeight.bold,
+                ),
+                lineColor: Colors.grey[800]!,
               ),
-              lineColor: Colors.grey[800]!,
             ),
-          ),
-          Positioned(
-            bottom: 24,
-            right: 24,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                FloatingActionButton.small(
-                  heroTag: 'zoom_in',
-                  onPressed: () {
-                    final currentZoom = _mapController.camera.zoom;
-                    _animatedMapMove(
-                      _mapController.camera.center,
-                      currentZoom + 1,
-                    );
-                  },
-                  backgroundColor: Colors.white,
-                  child: const Icon(Icons.add, color: Colors.indigoAccent),
-                ),
-                const SizedBox(height: 8),
-                FloatingActionButton.small(
-                  heroTag: 'zoom_out',
-                  onPressed: () {
-                    final currentZoom = _mapController.camera.zoom;
-                    _animatedMapMove(
-                      _mapController.camera.center,
-                      currentZoom - 1,
-                    );
-                  },
-                  backgroundColor: Colors.white,
-                  child: const Icon(Icons.remove, color: Colors.indigoAccent),
-                ),
-              ],
+            Positioned(
+              bottom: 24,
+              right: 24,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  FloatingActionButton.small(
+                    heroTag: 'zoom_in',
+                    onPressed: () {
+                      final currentZoom = _mapController.camera.zoom;
+                      _animatedMapMove(
+                        _mapController.camera.center,
+                        currentZoom + 1,
+                      );
+                    },
+                    backgroundColor: Colors.white,
+                    child: const Icon(Icons.add, color: Colors.indigoAccent),
+                  ),
+                  const SizedBox(height: 8),
+                  FloatingActionButton.small(
+                    heroTag: 'zoom_out',
+                    onPressed: () {
+                      final currentZoom = _mapController.camera.zoom;
+                      _animatedMapMove(
+                        _mapController.camera.center,
+                        currentZoom - 1,
+                      );
+                    },
+                    backgroundColor: Colors.white,
+                    child: const Icon(Icons.remove, color: Colors.indigoAccent),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            // Overlay de Drag & Drop
+            if (_isDragging)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.indigoAccent.withAlpha(40),
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 24,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withAlpha(40),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          ),
+                        ],
+                      ),
+                      child: const Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.cloud_upload_outlined,
+                            size: 64,
+                            color: Colors.indigoAccent,
+                          ),
+                          SizedBox(height: 16),
+                          Text(
+                            'Suelta los archivos aquí',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black87,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Soportados: .xlsx y .csv',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -2129,8 +2212,6 @@ class _MapScreenState extends ConsumerState<MapScreen>
       ),
     );
   }
-
-  bool _didInfinitLoopCheck = false;
 
   void _animatedMapMove(LatLng destLocation, double destZoom) {
     // Create some tweens. These serve to split up the transition from one location to another.
@@ -2409,6 +2490,10 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
   final Map<String, String> _statuses = {};
   bool _isProcessing = true;
   int _completedCount = 0;
+  int _successCount = 0;
+  int _errorCount = 0;
+  final ScrollController _scrollController = ScrollController();
+  final Map<int, GlobalKey> _itemKeys = {};
 
   @override
   void initState() {
@@ -2419,13 +2504,23 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
     _processFiles();
   }
 
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _processFiles() async {
     final notifier = ref.read(excelDataProvider.notifier);
 
-    for (final path in widget.filePaths) {
+    for (int i = 0; i < widget.filePaths.length; i++) {
+      final path = widget.filePaths[i];
       setState(() {
         _statuses[path] = 'Procesando...';
       });
+
+      // Auto-scroll to current item
+      _scrollToItem(i);
 
       try {
         await notifier.saveFileToDb(path);
@@ -2433,12 +2528,14 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
         setState(() {
           _statuses[path] = 'Listo';
           _completedCount++;
+          _successCount++;
         });
       } catch (e) {
         if (!mounted) return;
         setState(() {
           _statuses[path] = 'Error: $e';
           _completedCount++;
+          _errorCount++;
         });
       }
     }
@@ -2448,6 +2545,21 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
         _isProcessing = false;
       });
     }
+  }
+
+  void _scrollToItem(int index) {
+    // We use a small delay to ensure the framework has had a chance to build the item if needed
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final keyContext = _itemKeys[index]?.currentContext;
+      if (keyContext != null) {
+        Scrollable.ensureVisible(
+          keyContext,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      }
+    });
   }
 
   @override
@@ -2493,8 +2605,20 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
                         ),
                       ),
                       Text(
-                        'Cargando datos en la base de datos local',
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                        _isProcessing
+                            ? 'Cargando datos en la base de datos local'
+                            : 'Total: ${widget.filePaths.length} | Éxito: $_successCount | Error: $_errorCount',
+                        style: TextStyle(
+                          color: _isProcessing
+                              ? Colors.grey[600]
+                              : (_errorCount > 0
+                                    ? Colors.orange[800]
+                                    : Colors.green[700]),
+                          fontSize: 13,
+                          fontWeight: _isProcessing
+                              ? FontWeight.normal
+                              : FontWeight.w600,
+                        ),
                       ),
                     ],
                   ),
@@ -2540,14 +2664,17 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
                   border: Border.all(color: Colors.grey[200]!),
                 ),
                 child: ListView.separated(
+                  controller: _scrollController,
                   padding: const EdgeInsets.all(8),
                   itemCount: widget.filePaths.length,
                   separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
+                    _itemKeys[index] ??= GlobalKey();
                     final path = widget.filePaths[index];
                     final fileName = path.split('\\').last.split('/').last;
                     final status = _statuses[path] ?? '';
 
+                    final isError = status.startsWith('Error');
                     IconData statusIcon = Icons.more_horiz;
                     Color statusColor = Colors.grey;
 
@@ -2556,12 +2683,13 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
                     } else if (status == 'Listo') {
                       statusIcon = Icons.check_circle;
                       statusColor = Colors.green;
-                    } else if (status.startsWith('Error')) {
+                    } else if (isError) {
                       statusIcon = Icons.error;
                       statusColor = Colors.red;
                     }
 
                     return ListTile(
+                      key: _itemKeys[index],
                       dense: true,
                       leading: status == 'Procesando...'
                           ? _LoadingIcon(color: statusColor)
@@ -2572,14 +2700,26 @@ class _BatchImportDialogState extends ConsumerState<_BatchImportDialog> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      trailing: Text(
-                        status,
-                        style: TextStyle(
-                          color: statusColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 11,
-                        ),
-                      ),
+                      subtitle: isError
+                          ? Text(
+                              status,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            )
+                          : null,
+                      trailing: !isError
+                          ? Text(
+                              status,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                              ),
+                            )
+                          : const SizedBox(width: 20), // Placeholder for align
                     );
                   },
                 ),
