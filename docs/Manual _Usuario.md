@@ -9,7 +9,7 @@ El Visualizador SIOP es una herramienta diseñada para la visualización interac
 Existen tres formas de cargar información en la aplicación:
 
 ### A. Botón de Carga
-1. Haga clic en el ícono de la **alfombra/carpeta** en la tarjeta superior izquierda.
+1. Haga clic en el ícono de la **carpeta** en la tarjeta superior izquierda.
 2. Seleccione uno o varios archivos **Excel (.xlsx)** o **CSV** de su computadora.
 
 ### B. Arrastrar y Soltar (Novedad)
