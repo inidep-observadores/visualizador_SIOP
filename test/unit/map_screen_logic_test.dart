@@ -166,6 +166,14 @@ LatLng? _latLngFromRow(Map<String, dynamic> row) {
   return LatLng(latitude, longitude);
 }
 
+DateTime _convertUtcToLocalMinus3(DateTime utcDate) {
+  final utcMillis = utcDate.toUtc().millisecondsSinceEpoch;
+  return DateTime.fromMillisecondsSinceEpoch(
+    utcMillis + const Duration(hours: -3).inMilliseconds,
+    isUtc: false,
+  );
+}
+
 DateTime? _dateFromRow(Map<String, dynamic> row) {
   String? keyData;
   for (final k in ['fechahora', 'fecha', 'date', 'time', 'timestamp']) {
@@ -182,7 +190,7 @@ DateTime? _dateFromRow(Map<String, dynamic> row) {
   final val = row[keyData];
   if (val == null) return null;
   if (val is DateTime) {
-    return val.isUtc ? val.toLocal() : val;
+    return _convertUtcToLocalMinus3(val);
   }
   final str = val.toString().trim();
   try {
@@ -200,7 +208,7 @@ DateTime? _dateFromRow(Map<String, dynamic> row) {
         temp.microsecond,
       );
     }
-    return temp.toLocal();
+    return _convertUtcToLocalMinus3(temp);
   } catch (e) {
     return null;
   }
@@ -501,9 +509,9 @@ void main() {
       // Our function standardizes this by assuming UTC input if no TZ info.
       expect(
         _dateFromRow({'fechahora': '2023-10-26 14:30:00'}),
-        DateTime.utc(2023, 10, 26, 14, 30).toLocal(),
+        DateTime(2023, 10, 26, 11, 30),
       );
-      expect(_dateFromRow({'date': utcDate}), utcDate.toLocal());
+      expect(_dateFromRow({'date': utcDate}), DateTime(2023, 1, 1, 9));
     });
 
     test('_latLngFromRow creates LatLng object', () {

@@ -3005,6 +3005,14 @@ List<MapPoint> _extractMapPoints(List<Map<String, dynamic>> rows) {
   return points;
 }
 
+DateTime _convertUtcToLocalMinus3(DateTime utcDate) {
+  final utcMillis = utcDate.toUtc().millisecondsSinceEpoch;
+  return DateTime.fromMillisecondsSinceEpoch(
+    utcMillis + const Duration(hours: -3).inMilliseconds,
+    isUtc: false,
+  );
+}
+
 DateTime? _dateFromRow(Map<String, dynamic> row) {
   // Try to find a date column
   String? keyData;
@@ -3025,10 +3033,7 @@ DateTime? _dateFromRow(Map<String, dynamic> row) {
   if (val == null) return null;
 
   if (val is DateTime) {
-    if (val.isUtc) {
-      return val.toLocal();
-    }
-    return val;
+    return _convertUtcToLocalMinus3(val);
   }
 
   final str = val.toString().trim();
@@ -3052,7 +3057,7 @@ DateTime? _dateFromRow(Map<String, dynamic> row) {
       );
     }
 
-    return temp.toLocal();
+    return _convertUtcToLocalMinus3(temp);
   } catch (e) {
     return null;
   }
